@@ -3,676 +3,968 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="AERODRIFT - Real-time Stratospheric Balloon Tracking & Landing Prediction Dashboard for SEDHACKS'26 by Team TRINITY, REC SEDS.">
-  <title>AERODRIFT | Stratospheric Balloon Tracking & Landing Prediction</title>
+  <meta name="description" content="AERODRIFT — Scientific High-Altitude Balloon Flight Analysis & Mission Control Platform. REC SEDS Chapter.">
+  <title>AERODRIFT | Aerospace Mission Control & Flight Analysis</title>
 
-  <!-- Google Fonts: Orbitron (Headings), Inter (Body), JetBrains Mono (Telemetry) -->
+  <!-- Google Fonts: Inter (UI) & JetBrains Mono (Telemetry/Engineering) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Orbitron:wght@500;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <!-- Leaflet 1.9.4 CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 
-  <!-- Custom Stylesheet -->
+  <!-- Custom Scientific Stylesheet -->
   <link rel="stylesheet" href="style.css">
 </head>
-<body class="theme-space-dark">
-  <!-- Interactive Animated Starfield Canvas -->
-  <canvas id="starfield" aria-hidden="true"></canvas>
+<body>
 
-  <!-- Top Sticky Mission Bar -->
+  <!-- Persistent Mission Header & Navigation -->
   <header class="mission-topbar" id="mission-topbar">
-    <div class="topbar-left">
-      <div class="brand-container">
-        <!-- Custom Balloon + Orbit SVG Icon -->
-        <svg class="brand-icon" viewBox="0 0 40 40" width="36" height="36" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="AeroDrift Logo">
-          <ellipse cx="20" cy="20" rx="18" ry="7" stroke="url(#orbitGlow)" stroke-width="1.6" stroke-dasharray="3 2" transform="rotate(-25 20 20)"/>
-          <path d="M20 5C14.5 5 10 9.5 10 15C10 20 14 24 17.5 27L18.5 29H21.5L22.5 27C26 24 30 20 30 15C30 9.5 25.5 5 20 5Z" fill="url(#balloonGrad)" stroke="#22d3ee" stroke-width="1.4"/>
-          <path d="M17 10C16 12 16 15 17 18" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" stroke-linecap="round"/>
-          <rect x="18" y="31" width="4" height="3" rx="0.8" fill="#8b5cf6" stroke="#c084fc" stroke-width="1"/>
-          <line x1="19" y1="29" x2="19" y2="31" stroke="#22d3ee" stroke-width="1"/>
-          <line x1="21" y1="29" x2="21" y2="31" stroke="#22d3ee" stroke-width="1"/>
-          <defs>
-            <linearGradient id="balloonGrad" x1="10" y1="5" x2="30" y2="29" gradientUnits="userSpaceOnUse">
-              <stop stop-color="#0284c7"/>
-              <stop offset="0.6" stop-color="#0f172a"/>
-              <stop offset="1" stop-color="#7c3aed"/>
-            </linearGradient>
-            <linearGradient id="orbitGlow" x1="2" y1="20" x2="38" y2="20" gradientUnits="userSpaceOnUse">
-              <stop stop-color="#22d3ee"/>
-              <stop offset="0.5" stop-color="#8b5cf6"/>
-              <stop offset="1" stop-color="#f59e0b"/>
-            </linearGradient>
-          </defs>
+    <div class="topbar-main-row">
+      
+      <!-- Brand & Mission Identifier -->
+      <div class="brand-section">
+        <svg class="brand-symbol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="m4.93 4.93 4.24 4.24"></path>
+          <path d="m14.83 9.17 4.24-4.24"></path>
+          <path d="m14.83 14.83 4.24 4.24"></path>
+          <path d="m9.17 14.83-4.24 4.24"></path>
+          <circle cx="12" cy="12" r="4"></circle>
         </svg>
-        <div class="brand-text">
+        <div class="brand-title-group">
           <div class="brand-name-row">
             <span class="brand-name">AERODRIFT</span>
-            <span class="brand-tag">SEDHACKS '26</span>
+            <span class="brand-meta">REC SEDS</span>
           </div>
-          <span class="brand-tagline">Predictive Balloon Tracking & Recovery · Team TRINITY</span>
+          <span class="brand-sub">Stratospheric Flight Analysis · SEDHACKS '26</span>
         </div>
       </div>
-    </div>
 
-    <!-- Center Mission Indicators -->
-    <div class="topbar-center">
-      <div class="mission-pill" id="mission-clock-container" title="Mission Elapsed Time since first packet">
-        <span class="pill-label">MET</span>
-        <span class="pill-value font-mono" id="mission-clock">T+ 00:00:00</span>
+      <!-- Primary Subsystem View Navigation -->
+      <nav class="subsystem-nav" role="tablist" aria-label="Subsystem Views">
+        <button type="button" class="nav-tab-btn active" role="tab" aria-selected="true" data-view="overview" id="nav-btn-overview">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          <span>OVERVIEW</span>
+        </button>
+        <button type="button" class="nav-tab-btn" role="tab" aria-selected="false" data-view="analysis" id="nav-btn-analysis">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <span>FLIGHT ANALYSIS</span>
+        </button>
+        <button type="button" class="nav-tab-btn" role="tab" aria-selected="false" data-view="trajectory" id="nav-btn-trajectory">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
+          <span>TRAJECTORY & RECOVERY</span>
+        </button>
+        <button type="button" class="nav-tab-btn" role="tab" aria-selected="false" data-view="avionics" id="nav-btn-avionics">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span>AVIONICS</span>
+        </button>
+        <button type="button" class="nav-tab-btn" role="tab" aria-selected="false" data-view="operations" id="nav-btn-operations">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <span>OPERATIONS</span>
+        </button>
+        <button type="button" class="nav-tab-btn" role="tab" aria-selected="false" data-view="replay" id="nav-btn-replay">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          <span>REPLAY & EXPORT</span>
+        </button>
+      </nav>
+
+      <!-- Status Ribbon & Controls -->
+      <div class="topbar-status-ribbon">
+        <!-- Mission Elapsed Time -->
+        <div class="status-pill" title="Mission Elapsed Time since acquisition">
+          <span class="status-pill-label">MET</span>
+          <span class="status-pill-value font-mono" id="mission-clock">T+ 00:00:00</span>
+        </div>
+
+        <!-- Flight Phase -->
+        <div class="status-pill" title="Current Flight Phase">
+          <span class="status-pill-label">PHASE</span>
+          <span class="phase-tag badge-phase-pre" id="flight-phase-badge">PRE-LAUNCH</span>
+        </div>
+
+        <!-- RF Link State -->
+        <div class="status-pill" title="Radio Hardware Link Quality">
+          <span class="status-indicator-dot dot-live" id="link-status-dot"></span>
+          <span class="status-pill-value font-mono" id="link-status-text">LIVE</span>
+          <span class="status-pill-label font-mono" id="link-age-text">0.0s</span>
+        </div>
+
+        <!-- Firebase RTDB State -->
+        <div class="status-pill" title="Firebase RTDB Connection">
+          <span class="status-indicator-dot dot-connected" id="rtdb-status-dot"></span>
+          <span class="status-pill-value font-mono" id="rtdb-status-text">DATABASE</span>
+        </div>
+
+        <!-- UTC Clock -->
+        <div class="status-pill" title="Coordinated Universal Time">
+          <span class="status-pill-label">UTC</span>
+          <span class="status-pill-value font-mono" id="utc-clock">00:00:00</span>
+        </div>
+
+        <!-- Replay Active Badge (Visible during replay mode) -->
+        <div class="replay-status-indicator hidden" id="replay-indicator-badge">
+          <span>REPLAY</span>
+          <span id="replay-speed-label">1x</span>
+        </div>
+
+        <!-- Audio Alert Mute/Unmute Toggle -->
+        <button type="button" class="btn-icon-topbar" id="sound-toggle-btn" aria-label="Toggle Mission Audio Alerts" title="Toggle Audio Alerts">
+          <svg id="sound-icon-on" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+          </svg>
+          <svg id="sound-icon-off" class="hidden" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <line x1="23" y1="9" x2="17" y2="15"></line>
+            <line x1="17" y1="9" x2="23" y2="15"></line>
+          </svg>
+        </button>
+
+        <!-- Fast Flight Simulation Trigger -->
+        <button type="button" class="btn-sim-topbar" id="load-demo-sim-btn" title="Launch Stratospheric Flight Simulation">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          <span>SIMULATE</span>
+        </button>
       </div>
 
-      <div class="mission-pill phase-pill" id="phase-pill-container" title="Current Flight Phase">
-        <span class="pill-label">PHASE</span>
-        <span class="pill-badge badge-phase-pre" id="flight-phase-badge">PRE-LAUNCH</span>
-      </div>
-
-      <div class="mission-pill link-pill" id="link-pill-container" title="Hardware Telemetry Link Health">
-        <span class="status-dot dot-live" id="link-status-dot"></span>
-        <span class="pill-value font-mono" id="link-status-text">LIVE</span>
-        <span class="pill-subtext font-mono" id="link-age-text">0.0s</span>
-      </div>
-
-      <div class="mission-pill rtdb-pill" id="rtdb-pill-container" title="Firebase RTDB Connection">
-        <span class="status-dot dot-connected" id="rtdb-status-dot"></span>
-        <span class="pill-value font-mono" id="rtdb-status-text">DATABASE</span>
-      </div>
-    </div>
-
-    <!-- Topbar Right Controls -->
-    <div class="topbar-right">
-      <div class="utc-clock-display" id="utc-clock-container" title="Coordinated Universal Time">
-        <span class="utc-label">UTC</span>
-        <span class="utc-time font-mono" id="utc-clock">00:00:00</span>
-      </div>
-
-      <div class="replay-badge hidden" id="replay-indicator-badge" title="Replay Mode Active">
-        <span class="replay-pulse"></span>
-        <span>REPLAY <span id="replay-speed-label">1x</span></span>
-      </div>
-
-      <button type="button" class="btn-icon" id="sound-toggle-btn" aria-label="Toggle Mission Audio Alerts" title="Toggle Audio Alerts">
-        <svg id="sound-icon-on" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-          <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-        </svg>
-        <svg id="sound-icon-off" class="hidden" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-          <line x1="23" y1="9" x2="17" y2="15"></line>
-          <line x1="17" y1="9" x2="23" y2="15"></line>
-        </svg>
-      </button>
-
-      <button type="button" class="btn-action" id="settings-open-btn" aria-label="Open Mission Settings" title="Flight Configuration & Replay Settings">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="3"></circle>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-        </svg>
-        <span>CONTROL</span>
-      </button>
     </div>
   </header>
 
-  <!-- Emergency / Link Lost Alert Banner -->
-  <div class="emergency-banner hidden" id="emergency-banner" role="alert">
-    <div class="emergency-content">
-      <span class="emergency-icon">⚠️</span>
-      <div class="emergency-text">
-        <strong id="emergency-title">LINK LOST — TELEMETRY STALE (>30s)</strong>
-        <span id="emergency-details">Last known coordinates: <span class="font-mono" id="emergency-coords">--</span> at <span class="font-mono" id="emergency-alt">--</span> m</span>
+  <!-- Emergency Banner (Stale Telemetry >30s) -->
+  <div class="system-banner system-banner-critical hidden" id="emergency-banner" role="alert">
+    <div class="banner-content">
+      <span class="banner-icon">⚠️</span>
+      <div>
+        <strong>LINK LOST — TELEMETRY STALE (&gt;30s)</strong>
+        <span>Last known coordinates: <span class="font-mono" id="emergency-coords">--</span> at <span class="font-mono" id="emergency-alt">--</span> m</span>
       </div>
     </div>
-    <button type="button" class="btn-sm btn-outline" id="emergency-focus-btn">SHOW ON MAP</button>
-  </div>
-
-  <!-- Setup Placeholder Alert Banner -->
-  <div class="setup-banner hidden" id="setup-banner">
-    <div class="setup-content">
-      <span class="setup-icon">ℹ️</span>
-      <span>Firebase config contains default placeholders. To monitor hardware, update <code class="font-mono">firebase-config.js</code>.</span>
-    </div>
-    <div class="setup-actions">
-      <button type="button" class="btn-sm btn-cyan" id="load-demo-sim-btn">LAUNCH SIMULATOR</button>
-      <button type="button" class="btn-sm btn-outline" id="dismiss-setup-btn">DISMISS</button>
+    <div class="banner-actions">
+      <button type="button" class="btn-banner-action" id="emergency-focus-btn">SHOW ON MAP</button>
     </div>
   </div>
 
-  <main class="dashboard-main" id="dashboard-main">
+  <!-- Setup Placeholder Banner -->
+  <div class="system-banner system-banner-info hidden" id="setup-banner">
+    <div class="banner-content">
+      <span class="banner-icon">ℹ️</span>
+      <span>Firebase config contains default credentials. To monitor live payload hardware, update <code class="font-mono">firebase-config.js</code>.</span>
+    </div>
+    <div class="banner-actions">
+      <button type="button" class="btn-banner-action" id="empty-launch-sim-btn">LAUNCH SIMULATOR</button>
+      <button type="button" class="btn-banner-action" id="dismiss-setup-btn">DISMISS</button>
+    </div>
+  </div>
 
-    <!-- Empty State Overlay (Visible when no packets exist yet) -->
-    <section class="empty-state-overlay" id="empty-state-overlay">
-      <div class="empty-state-card glass-panel">
-        <div class="radar-scanner">
-          <div class="radar-circle c1"></div>
-          <div class="radar-circle c2"></div>
-          <div class="radar-circle c3"></div>
-          <div class="radar-sweep"></div>
-          <div class="radar-blip"></div>
-        </div>
-        <h2 class="empty-state-title">AWAITING TELEMETRY</h2>
-        <p class="empty-state-desc">Listening to Firebase Realtime Database at <code class="font-mono">/aerodrift/live</code> from ground station ESP32.</p>
-        <div class="empty-actions">
-          <button type="button" class="btn-cyan glow-effect" id="empty-launch-sim-btn">
-            <span>⚡ Launch Full Flight Simulation</span>
-          </button>
-          <button type="button" class="btn-outline" id="empty-open-settings-btn">
-            <span>Configure Telemetry Feed</span>
-          </button>
-        </div>
-      </div>
-    </section>
+  <!-- Main Multi-View Workspace -->
+  <main class="workspace-container" id="workspace-container">
 
-    <!-- SECTION 1: HERO TELEMETRY STRIP (7 Animated Tiles with Sparklines) -->
-    <section class="hero-telemetry-grid" aria-label="Primary Telemetry Stream">
-
-      <!-- Tile 1: Altitude -->
-      <article class="telemetry-card glass-card" id="card-alt">
-        <div class="card-header-row">
-          <span class="card-label">GPS ALTITUDE</span>
-          <span class="card-badge badge-apogee" id="apogee-badge">APOGEE: <span class="font-mono" id="apogee-val">--</span> m</span>
-        </div>
-        <div class="card-value-row">
-          <span class="card-num font-orbitron" id="val-alt">--</span>
-          <span class="card-unit">m</span>
-        </div>
-        <div class="card-sub-row">
-          <span class="card-secondary font-mono" id="val-alt-ft">-- ft</span>
-          <svg class="sparkline-svg" id="spark-alt" viewBox="0 0 60 20" preserveAspectRatio="none" aria-hidden="true"></svg>
-        </div>
-      </article>
-
-      <!-- Tile 2: Vertical Speed -->
-      <article class="telemetry-card glass-card" id="card-vs">
-        <div class="card-header-row">
-          <span class="card-label">VERTICAL SPEED</span>
-          <span class="card-badge" id="vs-trend-badge">5-PT AVG</span>
-        </div>
-        <div class="card-value-row">
-          <span class="card-num font-orbitron" id="val-vs">--</span>
-          <span class="card-unit">m/s</span>
-        </div>
-        <div class="card-sub-row">
-          <span class="card-secondary font-mono" id="val-vs-fpm">-- ft/min</span>
-          <svg class="sparkline-svg" id="spark-vs" viewBox="0 0 60 20" preserveAspectRatio="none" aria-hidden="true"></svg>
-        </div>
-      </article>
-
-      <!-- Tile 3: Ground / Wind Speed -->
-      <article class="telemetry-card glass-card" id="card-speed">
-        <div class="card-header-row">
-          <span class="card-label">GROUND DRIFT SPEED</span>
-          <span class="card-badge font-mono" id="speed-heading-badge">--°</span>
-        </div>
-        <div class="card-value-row">
-          <span class="card-num font-orbitron" id="val-speed">--</span>
-          <span class="card-unit">m/s</span>
-        </div>
-        <div class="card-sub-row">
-          <span class="card-secondary font-mono" id="val-speed-dual">-- km/h · -- kn</span>
-          <svg class="sparkline-svg" id="spark-speed" viewBox="0 0 60 20" preserveAspectRatio="none" aria-hidden="true"></svg>
-        </div>
-      </article>
-
-      <!-- Tile 4: Temperature -->
-      <article class="telemetry-card glass-card" id="card-temp">
-        <div class="card-header-row">
-          <span class="card-label">TEMPERATURE (BMP280)</span>
-          <span class="card-badge" id="temp-status-badge">BALLOON</span>
-        </div>
-        <div class="card-value-row">
-          <span class="card-num font-orbitron" id="val-temp">--</span>
-          <span class="card-unit">°C</span>
-        </div>
-        <div class="card-sub-row">
-          <span class="card-secondary font-mono" id="val-temp-f">-- °F</span>
-          <svg class="sparkline-svg" id="spark-temp" viewBox="0 0 60 20" preserveAspectRatio="none" aria-hidden="true"></svg>
-        </div>
-      </article>
-
-      <!-- Tile 5: Barometric Pressure -->
-      <article class="telemetry-card glass-card" id="card-press">
-        <div class="card-header-row">
-          <span class="card-label">PRESSURE</span>
-          <span class="card-badge font-mono" id="press-alt-est">BARO</span>
-        </div>
-        <div class="card-value-row">
-          <span class="card-num font-orbitron" id="val-press">--</span>
-          <span class="card-unit">hPa</span>
-        </div>
-        <div class="card-sub-row">
-          <span class="card-secondary font-mono" id="val-press-atm">-- atm</span>
-          <svg class="sparkline-svg" id="spark-press" viewBox="0 0 60 20" preserveAspectRatio="none" aria-hidden="true"></svg>
-        </div>
-      </article>
-
-      <!-- Tile 6: Satellites & HDOP -->
-      <article class="telemetry-card glass-card" id="card-gnss">
-        <div class="card-header-row">
-          <span class="card-label">GNSS SATELLITES</span>
-          <span class="card-badge font-mono" id="hdop-badge">HDOP: --</span>
-        </div>
-        <div class="card-value-row">
-          <span class="card-num font-orbitron" id="val-sats">--</span>
-          <span class="card-unit">SATS</span>
-        </div>
-        <div class="card-sub-row">
-          <span class="card-secondary font-mono" id="val-gnss-quality">3D NAVIGATION FIX</span>
-          <div class="gnss-signal-bars" id="gnss-bars" aria-label="Signal Quality Bars">
-            <span class="bar b1"></span><span class="bar b2"></span><span class="bar b3"></span><span class="bar b4"></span>
+    <!-- ====================================================================
+         VIEW 1: OVERVIEW (Default Landing View)
+         ==================================================================== -->
+    <section class="workspace-view active" id="view-overview" role="tabpanel" aria-labelledby="nav-btn-overview">
+      
+      <!-- Live Primary Telemetry Strip -->
+      <div class="telemetry-strip" aria-label="Primary Flight Telemetry">
+        
+        <!-- Metric 1: Altitude & Apogee -->
+        <div class="metric-card">
+          <div class="metric-header">
+            <span class="metric-label">ALTITUDE (MSL)</span>
+            <span class="metric-unit">METERS</span>
+          </div>
+          <div class="metric-value-row">
+            <span class="metric-value" id="val-alt">--</span>
+          </div>
+          <div class="metric-subvalue font-mono" id="val-alt-ft">-- ft</div>
+          <div class="metric-footer">
+            <span>APOGEE: <span class="font-mono" id="apogee-val">--</span> m</span>
+            <svg class="sparkline-svg" id="spark-alt" aria-hidden="true"></svg>
           </div>
         </div>
-      </article>
 
-      <!-- Tile 7: RSSI & Packet Health -->
-      <article class="telemetry-card glass-card" id="card-rssi">
-        <div class="card-header-row">
-          <span class="card-label">ESP-NOW RSSI</span>
-          <span class="card-badge font-mono" id="loss-pct-badge">LOSS: --%</span>
+        <!-- Metric 2: Vertical Velocity -->
+        <div class="metric-card">
+          <div class="metric-header">
+            <span class="metric-label">VERTICAL VELOCITY</span>
+            <span class="metric-unit">M/S</span>
+          </div>
+          <div class="metric-value-row">
+            <span class="metric-value" id="val-vs">--</span>
+          </div>
+          <div class="metric-subvalue font-mono" id="val-vs-fpm">-- ft/min</div>
+          <div class="metric-footer">
+            <span>SMOOTHED (5-PT)</span>
+            <svg class="sparkline-svg" id="spark-vs" aria-hidden="true"></svg>
+          </div>
         </div>
-        <div class="card-value-row">
-          <span class="card-num font-orbitron" id="val-rssi">--</span>
-          <span class="card-unit">dBm</span>
+
+        <!-- Metric 3: Ground Drift Speed -->
+        <div class="metric-card">
+          <div class="metric-header">
+            <span class="metric-label">DRIFT SPEED</span>
+            <span class="metric-unit">M/S</span>
+          </div>
+          <div class="metric-value-row">
+            <span class="metric-value" id="val-speed">--</span>
+          </div>
+          <div class="metric-subvalue font-mono" id="val-speed-dual">-- km/h · -- kn</div>
+          <div class="metric-footer">
+            <span>TRACK: <span class="font-mono" id="speed-heading-badge">--°</span></span>
+            <svg class="sparkline-svg" id="spark-speed" aria-hidden="true"></svg>
+          </div>
         </div>
-        <div class="card-sub-row">
-          <span class="card-secondary font-mono" id="val-pkt-seq">PKT #--</span>
-          <svg class="sparkline-svg" id="spark-rssi" viewBox="0 0 60 20" preserveAspectRatio="none" aria-hidden="true"></svg>
+
+        <!-- Metric 4: Ambient Temperature -->
+        <div class="metric-card">
+          <div class="metric-header">
+            <span class="metric-label">AMBIENT TEMP</span>
+            <span class="metric-unit">°C</span>
+          </div>
+          <div class="metric-value-row">
+            <span class="metric-value" id="val-temp">--</span>
+          </div>
+          <div class="metric-subvalue font-mono" id="val-temp-f">-- °F</div>
+          <div class="metric-footer">
+            <span>STRATOSPHERE LAPSE</span>
+            <svg class="sparkline-svg" id="spark-temp" aria-hidden="true"></svg>
+          </div>
         </div>
-      </article>
+
+        <!-- Metric 5: Barometric Pressure -->
+        <div class="metric-card">
+          <div class="metric-header">
+            <span class="metric-label">BARO PRESSURE</span>
+            <span class="metric-unit">HPA</span>
+          </div>
+          <div class="metric-value-row">
+            <span class="metric-value" id="val-press">--</span>
+          </div>
+          <div class="metric-subvalue font-mono" id="val-press-atm">-- atm</div>
+          <div class="metric-footer">
+            <span>BAROMETRIC LAPSE</span>
+            <svg class="sparkline-svg" id="spark-press" aria-hidden="true"></svg>
+          </div>
+        </div>
+
+        <!-- Metric 6: GNSS Satellites & Fix Quality -->
+        <div class="metric-card">
+          <div class="metric-header">
+            <span class="metric-label">GNSS CONSTELLATION</span>
+            <span class="metric-unit">SATS</span>
+          </div>
+          <div class="metric-value-row">
+            <span class="metric-value" id="val-sats">--</span>
+          </div>
+          <div class="metric-subvalue font-mono" id="hdop-badge">HDOP: --</div>
+          <div class="metric-footer">
+            <div class="signal-bars-indicator" id="gnss-bars">
+              <span class="sig-bar"></span><span class="sig-bar"></span><span class="sig-bar"></span><span class="sig-bar"></span>
+            </div>
+            <span>3D FIX</span>
+          </div>
+        </div>
+
+        <!-- Metric 7: Radio RF Link Quality -->
+        <div class="metric-card">
+          <div class="metric-header">
+            <span class="metric-label">RF TELEMETRY LINK</span>
+            <span class="metric-unit">DBM</span>
+          </div>
+          <div class="metric-value-row">
+            <span class="metric-value" id="val-rssi">--</span>
+          </div>
+          <div class="metric-subvalue font-mono" id="val-pkt-seq">PKT #--</div>
+          <div class="metric-footer">
+            <span id="loss-pct-badge">LOSS: 0.0%</span>
+            <svg class="sparkline-svg" id="spark-rssi" aria-hidden="true"></svg>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Overview Two-Column Master Grid -->
+      <div class="overview-grid">
+        
+        <!-- Primary Analytical Area: Dominant Flight Trajectory Profile -->
+        <div class="overview-main-column">
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title-group">
+                <span class="panel-title">FLIGHT TRAJECTORY PROFILE</span>
+                <span class="panel-subtitle">Integrated Altitude Envelope &amp; Mission Milestones</span>
+              </div>
+              <div class="chart-header-readouts">
+                <div class="readout-tag">
+                  <span class="readout-tag-label">CURSOR:</span>
+                  <span class="readout-tag-val font-mono" id="chart-stat-x">--:--:--</span>
+                </div>
+                <div class="readout-tag">
+                  <span class="readout-tag-label">VALUE:</span>
+                  <span class="readout-tag-val font-mono" id="chart-stat-y">--</span>
+                </div>
+                <div class="readout-tag">
+                  <span class="readout-tag-label">SAMPLES:</span>
+                  <span class="readout-tag-val font-mono" id="chart-stat-count">0</span>
+                </div>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="chart-container-large">
+                <canvas id="mission-chart"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Secondary Atmospheric Synopsis -->
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title-group">
+                <span class="panel-title">ATMOSPHERIC PROFILE SYNOPSIS</span>
+                <span class="panel-subtitle">Ambient Stratospheric Conditions at Flight Level</span>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="atmo-synopsis-grid">
+                <div class="atmo-cell">
+                  <span class="rm-label">TEMPERATURE LAPSE</span>
+                  <span class="rm-val font-mono" id="atmo-temp-lapse">-6.5 °C / km</span>
+                  <span class="metric-unit">Standard Troposphere Reference</span>
+                </div>
+                <div class="atmo-cell">
+                  <span class="rm-label">LOCAL WIND VECTOR</span>
+                  <span class="rm-val font-mono" id="nav-drift-toward">--° (--)</span>
+                  <span class="metric-unit">Blowing From: <span id="nav-wind-from">--° (--)</span></span>
+                </div>
+                <div class="atmo-cell">
+                  <span class="rm-label">HORIZONTAL SPEED</span>
+                  <span class="rm-val font-mono" id="nav-speed-ms">-- m/s</span>
+                  <span class="metric-unit"><span id="nav-speed-kmh">--</span> km/h · <span id="nav-speed-knots">--</span> kn</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Side: Recovery Forecast & Landing Uncertainty -->
+        <div class="overview-side-column">
+          
+          <!-- Landing Prediction Dossier -->
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title-group">
+                <span class="panel-title">RECOVERY FORECAST</span>
+                <span class="phase-tag badge-phase-float" id="prediction-status-badge">PROVISIONAL</span>
+              </div>
+            </div>
+            <div class="panel-body recovery-dossier-card">
+              
+              <!-- Coordinates Box -->
+              <div class="target-coords-box">
+                <div class="coords-label-row">
+                  <span>PREDICTED TOUCHDOWN TARGET</span>
+                  <span id="pred-ground-elev-label">GND: 0m MSL</span>
+                </div>
+                <div class="coords-numbers-row">
+                  <div class="coord-component">
+                    <span class="coord-axis">LAT</span>
+                    <span id="pred-lat">--.------</span>
+                  </div>
+                  <div class="coord-component">
+                    <span class="coord-axis">LNG</span>
+                    <span id="pred-lng">--.------</span>
+                  </div>
+                </div>
+                <div class="coords-actions-row">
+                  <button type="button" class="btn-secondary" id="copy-pred-coords-btn">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    <span>COPY COORDS</span>
+                  </button>
+                  <a href="#" target="_blank" rel="noopener noreferrer" class="btn-secondary" id="open-gmaps-link">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    <span>GOOGLE MAPS</span>
+                  </a>
+                </div>
+              </div>
+
+              <!-- Recovery Metrics Grid -->
+              <div class="recovery-metrics-grid font-mono">
+                <div class="recovery-metric-cell">
+                  <span class="rm-label">EST. TIME TO LAND (ETL)</span>
+                  <span class="rm-val" id="pred-etl">--:--</span>
+                </div>
+                <div class="recovery-metric-cell">
+                  <span class="rm-label">RANGE FROM BALLOON</span>
+                  <span class="rm-val" id="pred-dist-current">-- km</span>
+                </div>
+                <div class="recovery-metric-cell">
+                  <span class="rm-label">RANGE FROM LAUNCH</span>
+                  <span class="rm-val" id="pred-dist-launch">-- km</span>
+                </div>
+                <div class="recovery-metric-cell">
+                  <span class="rm-label">95% DISPERSION ELLIPSE</span>
+                  <span class="rm-val" id="pred-ellipse-axes">-- × -- m</span>
+                  <span class="metric-unit" id="pred-ellipse-orient">ORIENT: --°</span>
+                </div>
+              </div>
+
+              <!-- Jump to Trajectory Map View -->
+              <button type="button" class="btn-secondary" id="overview-jump-map-btn" style="width: 100%; justify-content: center;">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/></svg>
+                <span>OPEN RECOVERY MAP &amp; DISPERSION &rarr;</span>
+              </button>
+
+            </div>
+          </div>
+
+          <!-- Mission Chronology / Event Stream Preview -->
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title-group">
+                <span class="panel-title">MISSION CHRONOLOGY</span>
+                <span class="panel-subtitle">Real-Time Event Audit</span>
+              </div>
+              <button type="button" class="btn-icon-topbar" id="clear-events-btn" title="Clear event stream">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
+            </div>
+            <div class="panel-body">
+              <div class="events-stream-list" id="events-log-container">
+                <!-- Dynamically populated events -->
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
 
     </section>
 
-    <!-- SECTION 2: PRIMARY MAP & NAVIGATION & PREDICTION ROW -->
-    <section class="main-flight-grid">
-
-      <!-- LEFT: Main Leaflet Mission Map Card -->
-      <div class="map-card glass-card" id="map-panel">
+    <!-- ====================================================================
+         VIEW 2: FLIGHT ANALYSIS (Scientific Plotting Suite)
+         ==================================================================== -->
+    <section class="workspace-view" id="view-analysis" role="tabpanel" aria-labelledby="nav-btn-analysis">
+      
+      <div class="panel analysis-master-panel">
         <div class="panel-header">
           <div class="panel-title-group">
-            <h2 class="panel-title">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon>
-                <line x1="8" y1="2" x2="8" y2="18"></line>
-                <line x1="16" y1="6" x2="16" y2="22"></line>
-              </svg>
-              STRATOSPHERIC TRAJECTORY MAP
-            </h2>
-            <span class="panel-subtitle font-mono" id="map-point-counter">0 TRACK POINTS</span>
+            <span class="panel-title">SCIENTIFIC FLIGHT PROFILE &amp; ATMOSPHERIC DYNAMICS</span>
+            <span class="panel-subtitle">High-Resolution Multi-Series Telemetry Analysis</span>
           </div>
-
-          <div class="map-controls-group">
-            <label class="toggle-switch-label" title="Automatically center and follow balloon on map updates">
-              <input type="checkbox" id="follow-balloon-toggle" checked>
-              <span class="toggle-slider"></span>
-              <span class="toggle-text">FOLLOW</span>
-            </label>
-
-            <button type="button" class="btn-sm btn-outline" id="map-fit-bounds-btn" title="Fit all points, launch, and prediction">
-              <span>FIT ALL</span>
-            </button>
-
-            <button type="button" class="btn-sm btn-outline" id="map-center-balloon-btn" title="Center map on balloon">
-              <span>BALLOON</span>
-            </button>
+          <!-- Chart Tabs for Multi-Series Views -->
+          <div class="chart-controls-bar">
+            <div class="button-group-segment chart-tabs">
+              <button type="button" class="btn-segment active tab-btn" data-chart="alt-time">ALTITUDE (T)</button>
+              <button type="button" class="btn-segment tab-btn" data-chart="vs-time">VERT VELOCITY</button>
+              <button type="button" class="btn-segment tab-btn" data-chart="temp-alt">TEMP (Z)</button>
+              <button type="button" class="btn-segment tab-btn" data-chart="press-alt">PRESSURE (Z)</button>
+              <button type="button" class="btn-segment tab-btn" data-chart="wind-alt">WIND SOUNDING</button>
+            </div>
           </div>
         </div>
-
-        <!-- The Map Container -->
-        <div class="map-wrapper">
-          <div id="flight-map" class="flight-map" role="region" aria-label="Mission Trajectory Map"></div>
-
-          <!-- Floating Coordinates HUD Overlay -->
-          <div class="map-hud-overlay glass-panel font-mono" id="map-hud">
-            <div class="hud-item">
-              <span class="hud-lbl">LAT</span>
-              <span class="hud-val" id="hud-lat">--</span>
-            </div>
-            <div class="hud-item">
-              <span class="hud-lbl">LNG</span>
-              <span class="hud-val" id="hud-lng">--</span>
-            </div>
-            <div class="hud-item">
-              <span class="hud-lbl">ALT</span>
-              <span class="hud-val" id="hud-alt">-- m</span>
-            </div>
-            <div class="hud-item">
-              <span class="hud-lbl">DIST LAUNCH</span>
-              <span class="hud-val" id="hud-dist-launch">-- km</span>
-            </div>
-          </div>
-
-          <!-- Map Altitude Color Scale Legend -->
-          <div class="map-legend-overlay glass-panel" id="map-legend">
-            <span class="legend-title">ALTITUDE GRADIENT</span>
-            <div class="legend-bar"></div>
-            <div class="legend-labels font-mono">
-              <span>0 m</span>
-              <span>15 km</span>
-              <span>35+ km</span>
-            </div>
+        <div class="panel-body">
+          <div class="chart-container-large" style="height: 420px;">
+            <canvas id="analysis-master-chart"></canvas>
           </div>
         </div>
       </div>
 
-      <!-- RIGHT COLUMN: Wind Rose & Landing Prediction Cards -->
-      <div class="flight-side-column">
-
-        <!-- Card: Wind & Atmospheric Navigation -->
-        <div class="nav-card glass-card" id="wind-nav-card">
-          <div class="panel-header">
-            <h2 class="panel-title">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"></circle>
-                <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon>
-              </svg>
-              WIND & NAVIGATION
-            </h2>
-            <span class="panel-badge font-mono" id="nav-cardinal-badge">--</span>
-          </div>
-
-          <div class="compass-section">
-            <div class="compass-wrapper">
-              <!-- Custom Rotating Dual-Pointer Compass Rose SVG -->
-              <svg class="compass-svg" id="compass-svg" viewBox="0 0 200 200" width="180" height="180">
-                <!-- Compass Rose Dial Ring -->
-                <circle cx="100" cy="100" r="92" stroke="rgba(255,255,255,0.08)" stroke-width="2" fill="rgba(8,14,28,0.6)"/>
-                <circle cx="100" cy="100" r="76" stroke="rgba(34,211,238,0.2)" stroke-width="1" stroke-dasharray="2 4" fill="none"/>
-                
-                <!-- Cardinal Ticks -->
-                <g stroke="rgba(255,255,255,0.3)" stroke-width="1">
-                  <line x1="100" y1="10" x2="100" y2="20" stroke="#22d3ee" stroke-width="2"/>
-                  <line x1="100" y1="180" x2="100" y2="190"/>
-                  <line x1="10" y1="100" x2="20" y2="100"/>
-                  <line x1="180" y1="100" x2="190" y2="100"/>
-                </g>
-
-                <!-- Cardinal Text Labels -->
-                <text x="100" y="27" fill="#22d3ee" font-family="'Orbitron', sans-serif" font-weight="bold" font-size="12" text-anchor="middle">N</text>
-                <text x="175" y="104" fill="#94a3b8" font-family="'Orbitron', sans-serif" font-size="10" text-anchor="middle">E</text>
-                <text x="100" y="177" fill="#94a3b8" font-family="'Orbitron', sans-serif" font-size="10" text-anchor="middle">S</text>
-                <text x="25" y="104" fill="#94a3b8" font-family="'Orbitron', sans-serif" font-size="10" text-anchor="middle">W</text>
-
-                <!-- Needle 1: Drifting Toward (Cyan) -->
-                <g id="needle-drift" transform="rotate(0 100 100)">
-                  <polygon points="100,32 106,96 100,90 94,96" fill="#22d3ee" stroke="#38bdf8" stroke-width="1"/>
-                  <polygon points="100,168 104,104 100,110 96,104" fill="rgba(34,211,238,0.2)" stroke="#22d3ee" stroke-width="0.8"/>
-                </g>
-
-                <!-- Needle 2: Wind Blowing From (Amber/Violet) -->
-                <g id="needle-wind" transform="rotate(180 100 100)">
-                  <polygon points="100,42 105,96 100,92 95,96" fill="#f59e0b" stroke="#fbbf24" stroke-width="1"/>
-                </g>
-
-                <!-- Center Pivot -->
-                <circle cx="100" cy="100" r="10" fill="#0f172a" stroke="#22d3ee" stroke-width="2"/>
-                <circle cx="100" cy="100" r="4" fill="#22d3ee"/>
-              </svg>
-
-              <!-- Central Readout Inside Compass -->
-              <div class="compass-readout font-mono">
-                <span class="readout-deg" id="compass-heading-deg">--°</span>
-                <span class="readout-cardinal" id="compass-heading-cardinal">CALC</span>
-              </div>
-            </div>
-
-            <!-- Compass Legend and Vector Breakdown -->
-            <div class="compass-vectors">
-              <div class="vector-row vector-drift">
-                <div class="vector-indicator cyan-dot"></div>
-                <div class="vector-info">
-                  <span class="v-label">BALLOON DRIFT TOWARD</span>
-                  <span class="v-val font-mono" id="nav-drift-toward">--° (-- CARDINAL)</span>
-                </div>
-              </div>
-
-              <div class="vector-row vector-wind">
-                <div class="vector-indicator amber-dot"></div>
-                <div class="vector-info">
-                  <span class="v-label">WIND BLOWING FROM</span>
-                  <span class="v-val font-mono" id="nav-wind-from">--° (-- CARDINAL)</span>
-                </div>
-              </div>
-
-              <div class="speed-unit-strip font-mono">
-                <div class="speed-box">
-                  <span class="s-val" id="nav-speed-ms">--</span>
-                  <span class="s-unit">m/s</span>
-                </div>
-                <div class="speed-box">
-                  <span class="s-val" id="nav-speed-kmh">--</span>
-                  <span class="s-unit">km/h</span>
-                </div>
-                <div class="speed-box">
-                  <span class="s-val" id="nav-speed-knots">--</span>
-                  <span class="s-unit">knots</span>
-                </div>
-              </div>
-            </div>
+      <!-- Atmospheric Sounding Discretized Table -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <span class="panel-title">ATMOSPHERIC SOUNDING LAYERS (500M DISCRETIZATION)</span>
+            <span class="panel-subtitle">Empirical Horizontal Wind Profile from Balloon Ascent</span>
           </div>
         </div>
+        <div class="panel-body">
+          <div class="sounding-table-container">
+            <table class="data-table" id="sounding-data-table">
+              <thead>
+                <tr>
+                  <th>ALTITUDE BAND</th>
+                  <th>SAMPLES</th>
+                  <th>U (EASTWARD)</th>
+                  <th>V (NORTHWARD)</th>
+                  <th>RESULTANT SPEED</th>
+                  <th>WIND BEARING</th>
+                  <th>CARDINAL</th>
+                </tr>
+              </thead>
+              <tbody id="sounding-table-body">
+                <tr>
+                  <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 16px;">
+                    Awaiting ascent telemetry sounding data...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
 
-        <!-- Card: Landing Prediction (Monte Carlo 300 Engine) -->
-        <div class="prediction-card glass-card" id="prediction-panel">
+    </section>
+
+    <!-- ====================================================================
+         VIEW 3: TRAJECTORY & RECOVERY (Aerospace Cartography & Planning)
+         ==================================================================== -->
+    <section class="workspace-view" id="view-trajectory" role="tabpanel" aria-labelledby="nav-btn-trajectory">
+      
+      <div class="trajectory-workspace-layout">
+        
+        <!-- Large Interactive Cartographic Map -->
+        <div class="panel map-wrapper-panel">
           <div class="panel-header">
             <div class="panel-title-group">
-              <h2 class="panel-title">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <line x1="22" y1="12" x2="18" y2="12"></line>
-                  <line x1="6" y1="12" x2="2" y2="12"></line>
-                  <line x1="12" y1="6" x2="12" y2="2"></line>
-                  <line x1="12" y1="22" x2="12" y2="18"></line>
-                </svg>
-                LANDING PREDICTION
-              </h2>
+              <span class="panel-title">GEOSPATIAL TRAJECTORY &amp; MONTE CARLO DISPERSION</span>
+              <span class="panel-subtitle">CARTO Dark Matter · WGS-84 Geodesic Integration</span>
             </div>
-            <span class="pred-status-badge badge-provisional" id="prediction-status-badge">PROVISIONAL</span>
+            <div class="panel-actions">
+              <label class="layer-toggle-row font-mono" style="font-size: 11px;">
+                <input type="checkbox" id="follow-balloon-toggle" checked>
+                <span>AUTOFOCUS</span>
+              </label>
+              <button type="button" class="btn-secondary" id="map-center-balloon-btn" title="Center map on current balloon position">
+                <span>CENTER VEHICLE</span>
+              </button>
+              <button type="button" class="btn-secondary" id="map-fit-bounds-btn" title="Fit all mission bounds">
+                <span>FIT ALL BOUNDS</span>
+              </button>
+            </div>
           </div>
 
-          <div class="prediction-body">
-            <!-- Landing Coordinates Highlight Box -->
-            <div class="pred-coords-box glass-panel">
-              <div class="pred-coords-text">
-                <span class="pred-label">ESTIMATED TOUCHDOWN COORDINATES</span>
-                <div class="pred-latlng font-mono" id="pred-coords-display">
-                  <span id="pred-lat">--.------</span>, <span id="pred-lng">--.------</span>
+          <div class="map-canvas-container">
+            <div id="flight-map"></div>
+
+            <!-- Tactical Map HUD -->
+            <div class="map-hud-strip">
+              <div class="map-hud-item">
+                <span class="map-hud-label">LAT:</span>
+                <span class="map-hud-val" id="hud-lat">--.------</span>
+              </div>
+              <div class="map-hud-item">
+                <span class="map-hud-label">LNG:</span>
+                <span class="map-hud-val" id="hud-lng">--.------</span>
+              </div>
+              <div class="map-hud-item">
+                <span class="map-hud-label">ALT:</span>
+                <span class="map-hud-val" id="hud-alt">-- m</span>
+              </div>
+              <div class="map-hud-item">
+                <span class="map-hud-label">GROUND DIST:</span>
+                <span class="map-hud-val" id="hud-dist-launch">-- km</span>
+              </div>
+              <div class="map-hud-item">
+                <span class="map-hud-label">PTS:</span>
+                <span class="map-hud-val" id="map-point-counter">0</span>
+              </div>
+            </div>
+
+            <!-- Tactical Layer Controls -->
+            <div class="map-layer-controls-box">
+              <span class="panel-title" style="font-size: 10px; margin-bottom: 2px;">MAP OVERLAYS</span>
+              <label class="layer-toggle-row">
+                <input type="checkbox" id="layer-toggle-trail" checked>
+                <span>Flight Trajectory Polyline</span>
+              </label>
+              <label class="layer-toggle-row">
+                <input type="checkbox" id="layer-toggle-mc" checked>
+                <span>Monte Carlo Landing Cloud (300 Runs)</span>
+              </label>
+              <label class="layer-toggle-row">
+                <input type="checkbox" id="layer-toggle-ellipse" checked>
+                <span>95% Confidence Dispersion Ellipse</span>
+              </label>
+              <label class="layer-toggle-row">
+                <input type="checkbox" id="layer-toggle-nogo" checked>
+                <span>No-Go Exclusion Perimeter</span>
+              </label>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Sidebar: Recovery Logistics & Uncertainty Analysis -->
+        <div class="panel recovery-sidebar-panel">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <span class="panel-title">RECOVERY PLANNING</span>
+            </div>
+          </div>
+          <div class="panel-body recovery-dossier-card">
+            
+            <!-- Uncertainty Analysis Breakdown -->
+            <div class="uncertainty-box">
+              <div class="uncertainty-title-row">
+                <span>95% STATISTICAL COVARIANCE</span>
+                <span class="font-mono">k = 2.448</span>
+              </div>
+              <p style="font-size: 10px; color: var(--text-muted); line-height: 1.4;">
+                Two-dimensional Gaussian approximation of landing dispersion derived from 300 forward numerical integration paths with atmospheric perturbation.
+              </p>
+              <div class="uncertainty-metrics-row">
+                <div class="uncertainty-metric">
+                  <span class="um-label">SEMI-MAJOR (a)</span>
+                  <span class="um-val" id="sidebar-semi-major">-- m</span>
+                </div>
+                <div class="uncertainty-metric">
+                  <span class="um-label">SEMI-MINOR (b)</span>
+                  <span class="um-val" id="sidebar-semi-minor">-- m</span>
+                </div>
+                <div class="uncertainty-metric">
+                  <span class="um-label">ORIENTATION (&theta;)</span>
+                  <span class="um-val" id="sidebar-orient">--°</span>
+                </div>
+                <div class="uncertainty-metric">
+                  <span class="um-label">EST. DESCENT VEL</span>
+                  <span class="um-val" id="sidebar-desc-rate">-- m/s</span>
                 </div>
               </div>
-              <div class="pred-coords-actions">
-                <button type="button" class="btn-sm btn-icon" id="copy-pred-coords-btn" title="Copy Coordinates to Clipboard" aria-label="Copy Coordinates">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                  </svg>
-                </button>
-                <a href="#" target="_blank" rel="noopener noreferrer" class="btn-sm btn-outline-cyan" id="open-gmaps-link" title="Open in Google Maps">
-                  <span>MAPS ↗</span>
-                </a>
+            </div>
+
+            <!-- Simulation Parameters Setting -->
+            <div class="uncertainty-box">
+              <div class="coords-label-row">
+                <span>PREDICTION PARAMETERS</span>
+              </div>
+              <div class="form-field" style="margin-top: 6px;">
+                <label class="form-label" for="input-ground-elev">GROUND ELEVATION (M MSL)</label>
+                <input type="number" class="form-input font-mono" id="input-ground-elev" value="0" min="0" max="3000" step="5">
+              </div>
+              <div class="form-field" style="margin-top: 6px;">
+                <div style="display: flex; justify-content: space-between;">
+                  <label class="form-label" for="input-mc-runs">MONTE CARLO RUNS</label>
+                  <span class="font-mono" style="font-size: 10px; color: var(--accent-primary);" id="label-mc-runs">300</span>
+                </div>
+                <input type="range" class="range-slider-input" id="input-mc-runs" value="300" min="50" max="1000" step="50">
               </div>
             </div>
 
-            <!-- Quantitative Prediction Grid -->
-            <div class="pred-metrics-grid font-mono">
-              <div class="pred-metric-item">
-                <span class="pm-lbl">REMAINING FLIGHT TIME</span>
-                <span class="pm-val font-orbitron" id="pred-etl">--:--</span>
-                <span class="pm-sub">EST. TO GROUND</span>
+            <!-- No-Go Zone Alert Card -->
+            <div class="uncertainty-box" id="sidebar-nogo-card">
+              <div class="coords-label-row">
+                <span>EXCLUSION PERIMETER</span>
+                <span class="phase-tag badge-phase-pre" id="nogo-status-tag">MONITORED</span>
               </div>
-
-              <div class="pred-metric-item">
-                <span class="pm-lbl">DRIFT DISTANCE (NOW)</span>
-                <span class="pm-val font-orbitron" id="pred-dist-current">-- km</span>
-                <span class="pm-sub">HAVERSINE RANGE</span>
-              </div>
-
-              <div class="pred-metric-item">
-                <span class="pm-lbl">TOTAL RANGE (LAUNCH)</span>
-                <span class="pm-val font-orbitron" id="pred-dist-launch">-- km</span>
-                <span class="pm-sub">FROM PAD</span>
-              </div>
-
-              <div class="pred-metric-item">
-                <span class="pm-lbl">95% UNCERTAINTY ELLIPSE</span>
-                <span class="pm-val font-orbitron" id="pred-ellipse-axes">-- × -- m</span>
-                <span class="pm-sub" id="pred-ellipse-orient">SEMI-AXES (a × b)</span>
-              </div>
+              <p style="font-size: 10px; color: var(--text-muted); line-height: 1.4; margin-top: 4px;">
+                Radius check against predicted touchdown center:
+                <strong class="font-mono" id="nogo-dist-label" style="color: var(--text-primary);">-- km from boundary</strong>
+              </p>
             </div>
 
-            <!-- Prediction Notice & Confidence -->
-            <div class="pred-confidence-bar">
-              <div class="conf-info">
-                <span class="conf-dot"></span>
-                <span class="conf-text" id="pred-confidence-note">Monte Carlo 300 runs · Profile derived from flight trajectory</span>
-              </div>
-              <span class="conf-elev font-mono" id="pred-ground-elev-label">GND: 0m MSL</span>
-            </div>
           </div>
         </div>
 
       </div>
+
     </section>
 
-    <!-- SECTION 3: CHARTS & ATTITUDE HORIZON ROW -->
-    <section class="charts-attitude-grid">
-
-      <!-- LEFT: Dynamic Multi-Tab Charts Card (Chart.js) -->
-      <div class="charts-card glass-card" id="charts-panel">
-        <div class="panel-header charts-header">
-          <div class="panel-title-group">
-            <h2 class="panel-title">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="20" x2="18" y2="10"></line>
-                <line x1="12" y1="20" x2="12" y2="4"></line>
-                <line x1="6" y1="20" x2="6" y2="14"></line>
-              </svg>
-              MISSION TELEMETRY PROFILES
-            </h2>
+    <!-- ====================================================================
+         VIEW 4: AVIONICS (Attitude, IMU & Telecommunications Health)
+         ==================================================================== -->
+    <section class="workspace-view" id="view-avionics" role="tabpanel" aria-labelledby="nav-btn-avionics">
+      
+      <div class="avionics-grid">
+        
+        <!-- Instrument 1: Artificial Horizon -->
+        <div class="panel instrument-card">
+          <div class="panel-header" style="width: 100%;">
+            <div class="panel-title-group">
+              <span class="panel-title">ATTITUDE INDICATOR</span>
+              <span class="panel-subtitle">Gyroscope Pitch &amp; Roll</span>
+            </div>
           </div>
-
-          <!-- Chart Tabs Switcher -->
-          <div class="chart-tabs" role="tablist">
-            <button type="button" class="tab-btn active" role="tab" aria-selected="true" data-chart="alt-time">ALTITUDE / TIME</button>
-            <button type="button" class="tab-btn" role="tab" aria-selected="false" data-chart="temp-alt">TEMP / ALT</button>
-            <button type="button" class="tab-btn" role="tab" aria-selected="false" data-chart="press-alt">PRESSURE / ALT</button>
-            <button type="button" class="tab-btn" role="tab" aria-selected="false" data-chart="wind-alt">WIND / ALT</button>
-            <button type="button" class="tab-btn" role="tab" aria-selected="false" data-chart="vs-time">VERT SPEED / TIME</button>
-          </div>
-        </div>
-
-        <div class="chart-container-box">
-          <canvas id="mission-chart" role="img" aria-label="Flight Telemetry Profile Chart"></canvas>
-        </div>
-
-        <div class="chart-footer-stats font-mono">
-          <div class="c-stat">
-            <span class="cs-label">CURRENT X:</span>
-            <span class="cs-val" id="chart-stat-x">--</span>
-          </div>
-          <div class="c-stat">
-            <span class="cs-label">CURRENT Y:</span>
-            <span class="cs-val" id="chart-stat-y">--</span>
-          </div>
-          <div class="c-stat">
-            <span class="cs-label">DATA POINTS:</span>
-            <span class="cs-val" id="chart-stat-count">0</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- RIGHT: Attitude & IMU 3D Artificial Horizon Card -->
-      <div class="attitude-card glass-card" id="attitude-panel">
-        <div class="panel-header">
-          <h2 class="panel-title">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="2" y1="12" x2="22" y2="12"></line>
-              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-            </svg>
-            ATTITUDE & IMU SENSORS
-          </h2>
-          <span class="panel-badge font-mono" id="total-g-badge">TOTAL: 1.00 G</span>
-        </div>
-
-        <div class="attitude-body">
-          <!-- 3D Artificial Horizon Bezel -->
-          <div class="horizon-wrapper">
-            <div class="horizon-bezel">
-              <!-- Internal Pitch & Roll Drum -->
-              <div class="horizon-drum" id="horizon-drum">
+          <div class="panel-body" style="display: flex; flex-direction: column; align-items: center; width: 100%;">
+            <div class="horizon-instrument-dial" aria-label="Artificial Horizon Indicator">
+              <div class="horizon-drum-plane" id="horizon-drum">
                 <div class="horizon-sky"></div>
                 <div class="horizon-ground"></div>
-                <div class="horizon-line"></div>
-                <div class="pitch-ladder">
-                  <div class="pitch-mark p-20"><span>+20°</span></div>
-                  <div class="pitch-mark p-10"><span>+10°</span></div>
-                  <div class="pitch-mark p-zero"></div>
-                  <div class="pitch-mark p-m10"><span>-10°</span></div>
-                  <div class="pitch-mark p-m20"><span>-20°</span></div>
-                </div>
               </div>
-
-              <!-- Fixed Aircraft / Reticle Crosshair Symbol -->
-              <svg class="horizon-reticle" viewBox="0 0 160 160">
-                <path d="M40 80 L70 80 L76 90 L84 90 L90 80 L120 80" stroke="#f59e0b" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-                <circle cx="80" cy="80" r="3" fill="#f59e0b"/>
-              </svg>
-
-              <!-- Roll Scale Arc -->
-              <div class="roll-pointer"></div>
+              <!-- Pitch Ladder -->
+              <div class="horizon-pitch-ladder">
+                <span class="pitch-rung major"></span>
+                <span class="pitch-rung"></span>
+                <span class="pitch-rung major"></span>
+                <span class="pitch-rung"></span>
+                <span class="pitch-rung major"></span>
+              </div>
+              <!-- Fixed Reticle -->
+              <div class="horizon-reticle-fixed">
+                <div class="reticle-wing-left"></div>
+                <div class="reticle-center-dot"></div>
+                <div class="reticle-wing-right"></div>
+              </div>
             </div>
 
-            <div class="horizon-readouts font-mono">
-              <div class="hr-item">
-                <span class="hr-lbl">ROLL</span>
-                <span class="hr-val" id="imu-roll-val">0.0°</span>
+            <!-- Readouts -->
+            <div class="attitude-readouts-row">
+              <div class="att-readout">
+                <span class="att-label">ROLL ANGLE</span>
+                <span class="att-val" id="imu-roll-val">+0.0°</span>
               </div>
-              <div class="hr-item">
-                <span class="hr-lbl">PITCH</span>
-                <span class="hr-val" id="imu-pitch-val">0.0°</span>
+              <div class="att-readout">
+                <span class="att-label">PITCH ANGLE</span>
+                <span class="att-val" id="imu-pitch-val">+0.0°</span>
               </div>
             </div>
           </div>
+        </div>
 
-          <!-- IMU Acceleration & Gyroscope Bars -->
-          <div class="imu-bars-section font-mono">
-            <!-- Acceleration m/s² -->
-            <div class="sensor-group">
-              <span class="sg-title">ACCELEROMETER (m/s²)</span>
-              <div class="bar-row">
-                <span class="axis-lbl">AX</span>
-                <div class="bar-track"><div class="bar-fill axis-x" id="bar-ax" style="width: 50%;"></div></div>
-                <span class="axis-val" id="val-ax">+0.00</span>
+        <!-- Instrument 2: 3-Axis Accelerometer & Gyroscope -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <span class="panel-title">INERTIAL MEASUREMENT UNIT</span>
+              <span class="phase-tag badge-phase-pre" id="total-g-badge">TOTAL: 1.00 G</span>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="imu-bars-container">
+              
+              <!-- Accelerometer -->
+              <span class="rm-label" style="margin-bottom: -4px;">ACCELERATION (M/S²)</span>
+              <div class="imu-axis-row">
+                <div class="imu-axis-header">
+                  <span class="axis-tag">AX</span>
+                  <span class="axis-val" id="val-ax">+0.00</span>
+                </div>
+                <div class="meter-track">
+                  <div class="meter-center-line"></div>
+                  <div class="meter-fill-bar" id="bar-ax"></div>
+                </div>
               </div>
-              <div class="bar-row">
-                <span class="axis-lbl">AY</span>
-                <div class="bar-track"><div class="bar-fill axis-y" id="bar-ay" style="width: 50%;"></div></div>
-                <span class="axis-val" id="val-ay">+0.00</span>
+              <div class="imu-axis-row">
+                <div class="imu-axis-header">
+                  <span class="axis-tag">AY</span>
+                  <span class="axis-val" id="val-ay">+0.00</span>
+                </div>
+                <div class="meter-track">
+                  <div class="meter-center-line"></div>
+                  <div class="meter-fill-bar" id="bar-ay"></div>
+                </div>
               </div>
-              <div class="bar-row">
-                <span class="axis-lbl">AZ</span>
-                <div class="bar-track"><div class="bar-fill axis-z" id="bar-az" style="width: 74%;"></div></div>
-                <span class="axis-val" id="val-az">+9.81</span>
+              <div class="imu-axis-row">
+                <div class="imu-axis-header">
+                  <span class="axis-tag">AZ</span>
+                  <span class="axis-val" id="val-az">+9.81</span>
+                </div>
+                <div class="meter-track">
+                  <div class="meter-center-line"></div>
+                  <div class="meter-fill-bar" id="bar-az"></div>
+                </div>
+              </div>
+
+              <!-- Gyroscope -->
+              <span class="rm-label" style="margin-top: 8px; margin-bottom: -4px;">ANGULAR VELOCITY (DEG/S)</span>
+              <div class="imu-axis-row">
+                <div class="imu-axis-header">
+                  <span class="axis-tag">GX (ROLL RATE)</span>
+                  <span class="axis-val" id="val-gx">+0.0</span>
+                </div>
+                <div class="meter-track">
+                  <div class="meter-center-line"></div>
+                  <div class="meter-fill-bar meter-fill-gyro" id="bar-gx"></div>
+                </div>
+              </div>
+              <div class="imu-axis-row">
+                <div class="imu-axis-header">
+                  <span class="axis-tag">GY (PITCH RATE)</span>
+                  <span class="axis-val" id="val-gy">+0.0</span>
+                </div>
+                <div class="meter-track">
+                  <div class="meter-center-line"></div>
+                  <div class="meter-fill-bar meter-fill-gyro" id="bar-gy"></div>
+                </div>
+              </div>
+              <div class="imu-axis-row">
+                <div class="imu-axis-header">
+                  <span class="axis-tag">GZ (YAW RATE)</span>
+                  <span class="axis-val" id="val-gz">+0.0</span>
+                </div>
+                <div class="meter-track">
+                  <div class="meter-center-line"></div>
+                  <div class="meter-fill-bar meter-fill-gyro" id="bar-gz"></div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- Instrument 3: Wind Vector Compass Rose -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <span class="panel-title">WIND &amp; DRIFT COMPASS ROSE</span>
+              <span class="phase-tag badge-phase-pre" id="nav-cardinal-badge">-- (0°)</span>
+            </div>
+          </div>
+          <div class="panel-body compass-dial-container">
+            <!-- Compass Rose SVG -->
+            <svg class="compass-svg-dial" viewBox="0 0 200 200" aria-label="Wind Drift Compass">
+              <!-- Background Circle -->
+              <circle cx="100" cy="100" r="90" fill="#141915" stroke="#343D36" stroke-width="2"/>
+              <circle cx="100" cy="100" r="60" fill="none" stroke="#262E28" stroke-width="1"/>
+              <circle cx="100" cy="100" r="30" fill="none" stroke="#262E28" stroke-width="1"/>
+              
+              <!-- Cardinal Labels -->
+              <text x="100" y="24" text-anchor="middle" fill="#E8EDE7" font-family="JetBrains Mono" font-size="11" font-weight="700">N</text>
+              <text x="180" y="104" text-anchor="middle" fill="#A1AAA2" font-family="JetBrains Mono" font-size="11" font-weight="700">E</text>
+              <text x="100" y="184" text-anchor="middle" fill="#A1AAA2" font-family="JetBrains Mono" font-size="11" font-weight="700">S</text>
+              <text x="22" y="104" text-anchor="middle" fill="#A1AAA2" font-family="JetBrains Mono" font-size="11" font-weight="700">W</text>
+
+              <!-- Needle 1: Drifting Toward (Cyan) -->
+              <g id="needle-drift">
+                <polygon points="100,32 94,100 106,100" fill="#74C9CF"/>
+                <polygon points="100,168 94,100 106,100" fill="#242C26"/>
+              </g>
+
+              <!-- Needle 2: Wind Blowing From (Amber) -->
+              <g id="needle-wind">
+                <polygon points="100,42 96,100 104,100" fill="#E9B86A"/>
+              </g>
+
+              <circle cx="100" cy="100" r="4" fill="#E8EDE7"/>
+            </svg>
+
+            <div class="attitude-readouts-row">
+              <div class="att-readout">
+                <span class="att-label">TRACK HEADING</span>
+                <span class="att-val font-mono" id="compass-heading-deg">--°</span>
+              </div>
+              <div class="att-readout">
+                <span class="att-label">CARDINAL</span>
+                <span class="att-val font-mono" id="compass-heading-cardinal">--</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ====================================================================
+         VIEW 5: MISSION OPERATIONS (Safety Interlocks & Control)
+         ==================================================================== -->
+    <section class="workspace-view" id="view-operations" role="tabpanel" aria-labelledby="nav-btn-operations">
+      
+      <div class="operations-grid">
+        
+        <!-- Guarded Cutdown Actuation Console -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <span class="panel-title">NICHROME ENVELOPE SEPARATION (CUTDOWN)</span>
+              <span class="panel-subtitle">Pyro / Nichrome Actuation Guard</span>
+            </div>
+          </div>
+          <div class="panel-body cutdown-safety-console">
+            
+            <!-- Cutdown Remote Status Bar -->
+            <div class="cutdown-status-bar">
+              <div>
+                <span class="rm-label">TELEMETRY STATE:</span>
+                <span class="cutdown-status-badge badge-safe" id="cutdown-state-badge">SAFE</span>
+              </div>
+              <div class="safety-steps-stepper">
+                <span class="step-node active" id="step-safe">1. SAFE</span>
+                <span class="step-node" id="step-armed">2. ARMED</span>
+                <span class="step-node" id="step-fired">3. FIRED</span>
               </div>
             </div>
 
-            <!-- Gyroscope deg/s -->
-            <div class="sensor-group">
-              <span class="sg-title">GYROSCOPE (°/s)</span>
-              <div class="bar-row">
-                <span class="axis-lbl">GX</span>
-                <div class="bar-track"><div class="bar-fill gyro-x" id="bar-gx" style="width: 50%;"></div></div>
-                <span class="axis-val" id="val-gx">+0.0</span>
+            <p style="font-size: 11px; color: var(--text-secondary); line-height: 1.45;">
+              Actuating cutdown sends a physical burn command to the onboard nichrome resistance wire, melting the nylon tether and separating the balloon envelope for immediate parachute recovery.
+            </p>
+
+            <!-- Safety Lock Notice -->
+            <div class="warning-lock-notice hidden" id="cutdown-lock-notice">
+              <span>⚠️</span>
+              <span><strong>INTERLOCK ENGAGED:</strong> Telemetry is stale or disconnected. Cutdown actuation is locked to prevent out-of-sync commanding.</span>
+            </div>
+
+            <!-- Command Action Controls -->
+            <div class="cutdown-actions-row" id="cutdown-controls-box">
+              <button type="button" class="btn-command-arm" id="btn-arm-cutdown">ARM CIRCUIT</button>
+              <button type="button" class="btn-command-safe" id="btn-disarm-cutdown">SET SAFE</button>
+              <button type="button" class="btn-command-fire-trigger" id="btn-fire-cutdown-open">FIRE CUTDOWN...</button>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Restricted Airspace / No-Go Configuration -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <span class="panel-title">RESTRICTED AIRSPACE &amp; NO-GO PERIMETER</span>
+              <span class="panel-subtitle">Perimeter Breach Early Warning Engine</span>
+            </div>
+          </div>
+          <div class="panel-body">
+            
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+              <span class="rm-label">MONITOR RESTRICTED PERIMETER</span>
+              <label class="layer-toggle-row">
+                <input type="checkbox" id="setting-nogo-enable">
+                <span>ENABLE MONITORING</span>
+              </label>
+            </div>
+
+            <div class="form-grid-nogo">
+              <div class="form-field">
+                <label class="form-label" for="nogo-lat">CENTER LATITUDE</label>
+                <input type="number" class="form-input font-mono" id="nogo-lat" value="13.0827" step="0.0001">
               </div>
-              <div class="bar-row">
-                <span class="axis-lbl">GY</span>
-                <div class="bar-track"><div class="bar-fill gyro-y" id="bar-gy" style="width: 50%;"></div></div>
-                <span class="axis-val" id="val-gy">+0.0</span>
+              <div class="form-field">
+                <label class="form-label" for="nogo-lng">CENTER LONGITUDE</label>
+                <input type="number" class="form-input font-mono" id="nogo-lng" value="80.2707" step="0.0001">
               </div>
-              <div class="bar-row">
-                <span class="axis-lbl">GZ</span>
-                <div class="bar-track"><div class="bar-fill gyro-z" id="bar-gz" style="width: 50%;"></div></div>
-                <span class="axis-val" id="val-gz">+0.0</span>
+              <div class="form-field">
+                <label class="form-label" for="nogo-radius">EXCLUSION RADIUS (KM)</label>
+                <input type="number" class="form-input font-mono" id="nogo-radius" value="5.0" step="0.5" min="0.5">
               </div>
+            </div>
+
+            <p style="font-size: 11px; color: var(--text-muted); line-height: 1.4; margin-top: 14px;">
+              When enabled, any predicted touchdown coordinate inside the perimeter triggers high-priority audio alarms and flashes critical recovery warnings.
+            </p>
+
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Hardware Telecommunications & Diagnostic Log -->
+      <div class="panel" style="margin-top: 16px;">
+        <div class="panel-header">
+          <div class="panel-title-group">
+            <span class="panel-title">SUBSYSTEM TELEMETRY DIAGNOSTICS</span>
+            <span class="panel-subtitle">RF Signal Link &amp; Ingestion Watchdog</span>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="atmo-synopsis-grid font-mono">
+            <div class="atmo-cell">
+              <span class="rm-label">RF LINK SIGNAL</span>
+              <span class="rm-val" id="diag-rssi-val">-- dBm</span>
+              <div class="meter-track" style="margin-top: 6px;">
+                <div class="meter-fill-bar" id="diag-rssi-fill" style="width: 0%;"></div>
+              </div>
+            </div>
+            <div class="atmo-cell">
+              <span class="rm-label">PACKET SEQUENCE &amp; LOSS</span>
+              <span class="rm-val">SEQ <span id="diag-seq">--</span></span>
+              <span class="metric-unit">Dropped: <span id="diag-lost">0</span> (<span id="diag-loss-pct">0.00%</span>)</span>
+            </div>
+            <div class="atmo-cell">
+              <span class="rm-label">PACKET ARRIVAL WATCHDOG</span>
+              <span class="rm-val" id="diag-age">-- s</span>
+              <span class="metric-unit">Threshold: 10s (Stale) / 30s (Lost)</span>
             </div>
           </div>
         </div>
@@ -680,356 +972,204 @@
 
     </section>
 
-    <!-- SECTION 4: PAYLOAD/CUTDOWN, LINK DIAGNOSTICS & ALERTS ROW -->
-    <section class="operations-grid">
-
-      <!-- CARD 1: Payload & Guarded Cutdown Control -->
-      <div class="operations-card glass-card" id="cutdown-panel">
-        <div class="panel-header">
-          <h2 class="panel-title">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-            </svg>
-            PAYLOAD & CUTDOWN
-          </h2>
-          <span class="cutdown-status-badge badge-safe" id="cutdown-state-badge">SAFE</span>
-        </div>
-
-        <div class="cutdown-body">
-          <p class="cutdown-desc">Thermal / Pyrotechnic envelope separation release. Writes to <code class="font-mono">/aerodrift/commands/cutdown</code>.</p>
-
-          <div class="cutdown-state-indicator">
-            <div class="step-bullet active" id="step-safe">SAFE</div>
-            <div class="step-connector"></div>
-            <div class="step-bullet" id="step-armed">ARMED</div>
-            <div class="step-connector"></div>
-            <div class="step-bullet" id="step-fired">FIRED</div>
-          </div>
-
-          <div class="cutdown-controls-group" id="cutdown-controls-box">
-            <button type="button" class="btn-action btn-outline-cyan" id="btn-arm-cutdown" title="Arm Cutdown Trigger">
-              <span>ARM CUTDOWN</span>
-            </button>
-            <button type="button" class="btn-action btn-outline" id="btn-disarm-cutdown" title="Disarm and Return to Safe Mode">
-              <span>DISARM (SAFE)</span>
-            </button>
-            <button type="button" class="btn-danger glow-danger" id="btn-fire-cutdown-open" title="Open Guarded Fire Confirmation">
-              <span>⚡ FIRE CUTDOWN</span>
-            </button>
-          </div>
-
-          <div class="cutdown-lock-notice hidden" id="cutdown-lock-notice">
-            <span class="lock-icon">🔒</span>
-            <span class="lock-text">Cutdown commands locked: telemetry link is STALE or LOST.</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- CARD 2: RF Link & Telemetry Diagnostics -->
-      <div class="operations-card glass-card" id="diagnostics-panel">
-        <div class="panel-header">
-          <h2 class="panel-title">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
-              <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
-              <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
-              <line x1="12" y1="20" x2="12.01" y2="20"></line>
-            </svg>
-            LINK & DIAGNOSTICS
-          </h2>
-          <span class="panel-badge font-mono" id="diag-rate-badge">1.0 Hz</span>
-        </div>
-
-        <div class="diagnostics-body font-mono">
-          <!-- RSSI Visual Gauge -->
-          <div class="rssi-meter-box">
-            <div class="rssi-meter-labels">
-              <span>RSSI SIGNAL</span>
-              <span id="diag-rssi-val">-- dBm</span>
+    <!-- ====================================================================
+         VIEW 6: HISTORICAL REPLAY & SCIENTIFIC EXPORT
+         ==================================================================== -->
+    <section class="workspace-view" id="view-replay" role="tabpanel" aria-labelledby="nav-btn-replay">
+      
+      <div class="replay-workspace-grid">
+        
+        <!-- Replay Scrubber Controls -->
+        <div class="panel replay-controls-card">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <span class="panel-title">TRAJECTORY REPLAY CONSOLE</span>
+              <span class="panel-subtitle">Post-Flight Debrief &amp; Time Scrubbing</span>
             </div>
-            <div class="rssi-track">
-              <div class="rssi-fill" id="diag-rssi-fill" style="width: 65%;"></div>
-            </div>
-            <div class="rssi-scale">
-              <span>-110 dBm (WEAK)</span>
-              <span>-40 dBm (STRONG)</span>
+            <div class="panel-actions">
+              <button type="button" class="btn-segment active" id="btn-mode-live">LIVE STREAM</button>
+              <button type="button" class="btn-segment" id="btn-mode-replay">REPLAY MODE</button>
             </div>
           </div>
+          <div class="panel-body" style="display: flex; flex-direction: column; gap: 14px;">
+            
+            <p style="font-size: 11px; color: var(--text-secondary); line-height: 1.45;">
+              Replay mode freezes live Firebase network ingestion and plays back historical flight packets through the mission analysis engine, map, and avionics instruments.
+            </p>
 
-          <!-- Diagnostic Metrics List -->
-          <div class="diag-metrics-grid">
-            <div class="dm-box">
-              <span class="dm-lbl">PACKET SEQ</span>
-              <span class="dm-val" id="diag-seq">--</span>
+            <div class="replay-timeline-slider-row" id="replay-active-controls">
+              <div style="display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px;">
+                <span style="color: var(--text-muted);">TIMELINE POSITION</span>
+                <span style="color: var(--accent-primary);" id="replay-timeline-label">0 / 0</span>
+              </div>
+              <input type="range" class="range-slider-input" id="replay-timeline-slider" min="0" max="100" value="0">
             </div>
-            <div class="dm-box">
-              <span class="dm-lbl">PACKETS LOST</span>
-              <span class="dm-val" id="diag-lost">--</span>
-            </div>
-            <div class="dm-box">
-              <span class="dm-lbl">LOSS RATE</span>
-              <span class="dm-val" id="diag-loss-pct">--%</span>
-            </div>
-            <div class="dm-box">
-              <span class="dm-lbl">PACKET AGE</span>
-              <span class="dm-val" id="diag-age">-- s</span>
-            </div>
-          </div>
 
-          <div class="diag-transport-info">
-            <span class="dt-dot"></span>
-            <span>ESP-NOW Link · ESP32 Bridge -> Firebase RTDB</span>
+            <!-- Transport & Playback Speed Bar -->
+            <div class="replay-transport-bar">
+              <button type="button" class="btn-secondary" id="btn-replay-pause">PAUSE</button>
+              <div class="speed-selector-group replay-speed-row">
+                <span class="rm-label" style="margin-right: 6px;">SPEED:</span>
+                <button type="button" class="btn-speed active" data-speed="1">1x</button>
+                <button type="button" class="btn-speed" data-speed="2">2x</button>
+                <button type="button" class="btn-speed" data-speed="5">5x</button>
+                <button type="button" class="btn-speed" data-speed="10">10x</button>
+                <button type="button" class="btn-speed" data-speed="20">20x</button>
+              </div>
+            </div>
+
+            <!-- One-Click Flight Simulator Button -->
+            <div style="border-top: 1px solid var(--border-subtle); padding-top: 12px; margin-top: 4px;">
+              <button type="button" class="btn-secondary" id="drawer-launch-sim-btn" style="width: 100%; justify-content: center;">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <span>GENERATE FULL 30KM FLIGHT SIMULATION DATA</span>
+              </button>
+            </div>
+
           </div>
         </div>
-      </div>
 
-      <!-- CARD 3: Mission Event Log & Automated Alerts -->
-      <div class="operations-card glass-card" id="alerts-panel">
-        <div class="panel-header">
-          <h2 class="panel-title">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
-              <line x1="16" y1="13" x2="8" y2="13"></line>
-              <line x1="16" y1="17" x2="8" y2="17"></line>
-              <polyline points="10 9 9 9 8 9"></polyline>
-            </svg>
-            MISSION EVENT LOG & ALERTS
-          </h2>
-          <button type="button" class="btn-xs btn-outline" id="clear-events-btn">CLEAR</button>
-        </div>
+        <!-- Scientific Data Export Hub -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title-group">
+              <span class="panel-title">SCIENTIFIC DATA EXPORT</span>
+              <span class="panel-subtitle">Standard Geospatial &amp; Telemetry Formats</span>
+            </div>
+          </div>
+          <div class="panel-body export-cards-grid">
+            
+            <!-- CSV Export -->
+            <div class="export-item-card">
+              <div class="export-meta">
+                <span class="export-format-name">CSV SPREADSHEET</span>
+                <span class="export-format-desc">23 telemetry columns with ISO timestamps, coordinates, IMU, and link quality.</span>
+              </div>
+              <button type="button" class="btn-export-download" id="btn-export-csv">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>EXPORT CSV</span>
+              </button>
+            </div>
 
-        <div class="alerts-log-container" id="events-log-container" role="log" aria-live="polite">
-          <!-- Dynamically populated event entries -->
-          <div class="event-item info">
-            <span class="event-time font-mono">00:00:00</span>
-            <span class="event-tag">SYSTEM</span>
-            <span class="event-msg">AERODRIFT Mission Telemetry Engine Initialized.</span>
+            <!-- GPX Export -->
+            <div class="export-item-card">
+              <div class="export-meta">
+                <span class="export-format-name">GPX TRACK 1.1</span>
+                <span class="export-format-desc">Standard XML track log format for Garmin BaseCamp, Google Earth, and GPS receivers.</span>
+              </div>
+              <button type="button" class="btn-export-download" id="btn-export-gpx">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>EXPORT GPX</span>
+              </button>
+            </div>
+
+            <!-- GeoJSON Export -->
+            <div class="export-item-card">
+              <div class="export-meta">
+                <span class="export-format-name">GEOJSON LINESTRING</span>
+                <span class="export-format-desc">FeatureCollection format for QGIS, ArcGIS, Mapbox, and Kepler.gl spatial analysis.</span>
+              </div>
+              <button type="button" class="btn-export-download" id="btn-export-geojson">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>EXPORT GEOJSON</span>
+              </button>
+            </div>
+
           </div>
         </div>
+
       </div>
 
     </section>
 
   </main>
 
-  <!-- Sticky Toast Notification Overlay (Top Right) -->
-  <aside class="toast-stack" id="toast-stack" aria-live="assertive" aria-atomic="true"></aside>
-
-  <!-- GUARDED CUTDOWN TWO-STEP CONFIRMATION MODAL -->
-  <div class="modal-backdrop hidden" id="cutdown-modal" role="dialog" aria-modal="true" aria-labelledby="modal-cutdown-title">
-    <div class="modal-card glass-card modal-danger">
-      <div class="modal-header">
-        <div class="modal-title-row">
-          <span class="modal-alert-icon">⚠️</span>
-          <h3 id="modal-cutdown-title" class="modal-title font-orbitron">CONFIRM ENVELOPE CUTDOWN</h3>
-        </div>
-        <button type="button" class="modal-close-btn" id="modal-cutdown-close" aria-label="Close Modal">&times;</button>
+  <!-- Empty State Overlay (Visible only when awaiting initial packet acquisition) -->
+  <div class="modal-backdrop-layer hidden" id="empty-state-overlay">
+    <div class="modal-dialog-box" style="border-color: var(--border-strong);">
+      <div class="modal-dialog-header" style="background: var(--bg-elevated); border-color: var(--border-subtle);">
+        <span class="modal-dialog-title" style="color: var(--accent-primary);">AERODRIFT GROUND STATION READY</span>
       </div>
-
-      <div class="modal-body">
-        <p class="modal-warning-text">
-          <strong>CRITICAL SAFETY ACTION:</strong> Executing cutdown will instantly sever the balloon flight train and initiate parachute descent. This action is <em>irreversible</em>.
+      <div class="modal-dialog-body">
+        <p style="font-size: 12px; color: var(--text-secondary); line-height: 1.5;">
+          Awaiting stratospheric balloon telemetry packet ingest over Firebase Realtime Database. You can launch the realistic flight simulation below for testing and demonstration.
         </p>
-
-        <!-- Step 1: Type Verification Word -->
-        <div class="modal-field-group">
-          <label for="cutdown-verify-input" class="modal-field-label">
-            Step 1: Type <strong class="font-mono text-cyan">CUTDOWN</strong> to unlock trigger:
-          </label>
-          <input type="text" id="cutdown-verify-input" class="modal-input font-mono" placeholder="Type CUTDOWN here" autocomplete="off" spellcheck="false">
+        <div style="display: flex; gap: 10px; margin-top: 8px;">
+          <button type="button" class="btn-secondary" id="empty-launch-sim-btn-modal" style="flex: 1; justify-content: center; background: var(--accent-primary); color: var(--bg-root); font-weight: 700;">
+            LAUNCH SIMULATOR
+          </button>
+          <button type="button" class="btn-secondary" id="empty-open-settings-btn" style="flex: 1; justify-content: center;">
+            CONFIG DATABASE
+          </button>
         </div>
-
-        <!-- Step 2: 5-Second Hold-to-Confirm Button -->
-        <div class="modal-field-group">
-          <label class="modal-field-label">Step 2: Press and hold trigger for 5 continuous seconds:</label>
-          <div class="hold-button-container">
-            <button type="button" class="btn-hold-fire" id="hold-fire-btn" disabled>
-              <div class="hold-progress-fill" id="hold-progress-fill"></div>
-              <span class="hold-btn-text" id="hold-btn-text">PRESS & HOLD 5.0s</span>
-            </button>
-          </div>
-          <span class="hold-hint font-mono" id="hold-hint-text">Type confirmation word to enable trigger</span>
-        </div>
-      </div>
-
-      <div class="modal-footer">
-        <button type="button" class="btn-outline" id="modal-cutdown-cancel">ABORT</button>
       </div>
     </div>
   </div>
 
-  <!-- SETTINGS & CONTROLS SLIDE-OUT DRAWER -->
-  <div class="drawer-backdrop hidden" id="settings-drawer-backdrop"></div>
-  <aside class="settings-drawer glass-panel" id="settings-drawer" role="dialog" aria-modal="true" aria-label="Flight Configuration Settings">
-    <div class="drawer-header">
-      <div class="drawer-title-group">
-        <h3 class="drawer-title font-orbitron">MISSION CONTROLS</h3>
-        <span class="drawer-sub">Flight Configuration & Replay</span>
-      </div>
-      <button type="button" class="drawer-close-btn" id="settings-drawer-close" aria-label="Close Settings Drawer">&times;</button>
-    </div>
-
-    <div class="drawer-content">
-
-      <!-- Section: Landing Prediction Parameters -->
-      <fieldset class="drawer-section">
-        <legend class="drawer-section-title">LANDING PREDICTION CONFIG</legend>
-        
-        <div class="drawer-form-item">
-          <label for="input-ground-elev">Target Ground Elevation (m MSL):</label>
-          <div class="input-unit-wrapper">
-            <input type="number" id="input-ground-elev" class="form-input font-mono" value="0" min="-100" max="5000" step="10">
-            <span class="input-unit">m</span>
-          </div>
-          <small class="drawer-hint">Default 0m (sea level). REC Chennai launch site ~25m.</small>
-        </div>
-
-        <div class="drawer-form-item">
-          <label for="input-mc-runs">Monte Carlo Perturbation Runs:</label>
-          <div class="range-wrapper">
-            <input type="range" id="input-mc-runs" min="100" max="500" step="50" value="300">
-            <span class="font-mono text-cyan" id="label-mc-runs">300</span>
-          </div>
-          <small class="drawer-hint">Simulates ±15% wind speed, ±10° direction, ±20% descent rate.</small>
-        </div>
-      </fieldset>
-
-      <!-- Section: Units & Interface -->
-      <fieldset class="drawer-section">
-        <legend class="drawer-section-title">DISPLAY PREFERENCES</legend>
-
-        <div class="drawer-form-item">
-          <label>Display Units:</label>
-          <div class="radio-pill-group">
-            <label class="radio-pill">
-              <input type="radio" name="unit-pref" value="metric" checked>
-              <span>METRIC (m, m/s, °C)</span>
-            </label>
-            <label class="radio-pill">
-              <input type="radio" name="unit-pref" value="imperial">
-              <span>IMPERIAL (ft, kn, °F)</span>
-            </label>
-          </div>
-        </div>
-
-        <div class="drawer-form-item">
-          <label class="checkbox-row">
-            <input type="checkbox" id="setting-sound-alerts" checked>
-            <span>Enable Audio Synthesizer Alerts</span>
-          </label>
-        </div>
-
-        <div class="drawer-form-item">
-          <label class="checkbox-row">
-            <input type="checkbox" id="setting-map-follow" checked>
-            <span>Map Auto-follow Live Balloon</span>
-          </label>
-        </div>
-      </fieldset>
-
-      <!-- Section: No-Go Exclusion Zone Alert -->
-      <fieldset class="drawer-section">
-        <legend class="drawer-section-title">NO-GO ZONE PROXIMITY ALERT</legend>
-        
-        <div class="drawer-form-item">
-          <label class="checkbox-row">
-            <input type="checkbox" id="setting-nogo-enable">
-            <span>Alert if Predicted Landing is in No-Go Zone</span>
-          </label>
-        </div>
-
-        <div class="nogo-inputs-grid" id="nogo-inputs-group">
-          <div class="drawer-form-item">
-            <label for="nogo-lat">Center Lat:</label>
-            <input type="number" id="nogo-lat" class="form-input font-mono" value="13.0827" step="0.0001">
-          </div>
-          <div class="drawer-form-item">
-            <label for="nogo-lng">Center Lng:</label>
-            <input type="number" id="nogo-lng" class="form-input font-mono" value="80.2707" step="0.0001">
-          </div>
-          <div class="drawer-form-item">
-            <label for="nogo-radius">Radius (km):</label>
-            <input type="number" id="nogo-radius" class="form-input font-mono" value="5.0" step="0.5" min="0.5" max="50">
-          </div>
-        </div>
-      </fieldset>
-
-      <!-- Section: Flight Replay Mode -->
-      <fieldset class="drawer-section">
-        <legend class="drawer-section-title">FLIGHT REPLAY CONTROLLER</legend>
-        <p class="drawer-desc">Replay flight trajectory from <code class="font-mono">/aerodrift/history</code> for demonstration and post-flight review.</p>
-
-        <div class="replay-controls-box">
-          <div class="replay-mode-switch">
-            <button type="button" class="btn-sm btn-cyan active" id="btn-mode-live">LIVE TELEMETRY</button>
-            <button type="button" class="btn-sm btn-outline" id="btn-mode-replay">START REPLAY</button>
-          </div>
-
-          <div class="replay-active-controls hidden" id="replay-active-controls">
-            <div class="replay-timeline-row">
-              <input type="range" id="replay-timeline-slider" min="0" max="100" value="0">
-              <span class="font-mono text-cyan" id="replay-timeline-label">0 / 0</span>
-            </div>
-
-            <div class="replay-speed-row">
-              <span class="rs-label">Speed:</span>
-              <button type="button" class="btn-xs btn-outline active" data-speed="1">1x</button>
-              <button type="button" class="btn-xs btn-outline" data-speed="5">5x</button>
-              <button type="button" class="btn-xs btn-outline" data-speed="20">20x</button>
-              <button type="button" class="btn-xs btn-outline" id="btn-replay-pause">PAUSE</button>
-            </div>
-          </div>
-        </div>
-      </fieldset>
-
-      <!-- Section: Demo Flight Simulator -->
-      <fieldset class="drawer-section">
-        <legend class="drawer-section-title">SIMULATION GENERATOR</legend>
-        <p class="drawer-desc">Push realistic stratospheric balloon flight data (Ascent -> 30km Burst -> Parachute Descent) for hackathon testing without hardware.</p>
-        <button type="button" class="btn-action btn-outline-cyan w-full" id="drawer-launch-sim-btn">
-          <span>⚡ Generate & Run Demo Flight Simulation</span>
+  <!-- Guarded Cutdown Confirmation Modal -->
+  <div class="modal-backdrop-layer hidden" id="cutdown-modal" role="dialog" aria-modal="true" aria-labelledby="cutdown-modal-title">
+    <div class="modal-dialog-box">
+      <div class="modal-dialog-header">
+        <span class="modal-dialog-title" id="cutdown-modal-title">CRITICAL: CONFIRM ENVELOPE CUTDOWN</span>
+        <button type="button" class="btn-icon-topbar" id="modal-cutdown-close" aria-label="Close dialog">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
-      </fieldset>
-
-      <!-- Section: Data Exports -->
-      <fieldset class="drawer-section">
-        <legend class="drawer-section-title">DATA EXPORTS</legend>
-        <div class="export-buttons-grid">
-          <button type="button" class="btn-action btn-outline" id="btn-export-csv" title="Export Telemetry Samples to CSV">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            <span>EXPORT CSV</span>
-          </button>
-          <button type="button" class="btn-action btn-outline" id="btn-export-gpx" title="Export Trajectory to GPX format">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            <span>EXPORT GPX</span>
-          </button>
-          <button type="button" class="btn-action btn-outline" id="btn-export-geojson" title="Export Trajectory to GeoJSON">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            <span>EXPORT GEOJSON</span>
-          </button>
+      </div>
+      <div class="modal-dialog-body">
+        <p class="modal-warning-text">
+          ⚠️ <strong>WARNING:</strong> This action cannot be undone. Actuating envelope separation will sever the balloon tether immediately, ending ascent and deploying the parachute recovery train.
+        </p>
+        
+        <div class="form-field">
+          <label class="form-label" for="cutdown-verify-input">TYPE 'CUTDOWN' TO UNLOCK TRIGGER</label>
+          <input type="text" class="form-input font-mono" id="cutdown-verify-input" placeholder="Type CUTDOWN here" autocomplete="off">
         </div>
-      </fieldset>
 
+        <!-- 5-Second Hold to Fire Button -->
+        <button type="button" class="hold-to-fire-button-box" id="hold-fire-btn" disabled>
+          <div class="hold-progress-fill-bar" id="hold-progress-fill"></div>
+          <span class="hold-button-label-text" id="hold-btn-text">PRESS &amp; HOLD 5.0s</span>
+        </button>
+
+        <p style="font-size: 10px; color: var(--text-muted); text-align: center;" id="hold-hint-text">
+          Type 'CUTDOWN' above to enable trigger button
+        </p>
+
+        <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+          <button type="button" class="btn-secondary" id="modal-cutdown-cancel">CANCEL</button>
+        </div>
+      </div>
     </div>
-  </aside>
+  </div>
+
+  <!-- Non-Intrusive Mission Toast Stack -->
+  <aside class="toast-stack-container" id="toast-stack" aria-live="polite" aria-atomic="true"></aside>
 
   <!-- Mission Footer -->
   <footer class="mission-footer">
     <div class="footer-left">
-      <span class="footer-brand font-orbitron">AERODRIFT</span>
-      <span class="footer-team">SEDHACKS '26 · Team TRINITY · Rajalakshmi Engineering College · SEDS REC Chapter</span>
+      <strong style="color: var(--text-primary);">AERODRIFT</strong>
+      <span>SEDHACKS '26 · Team TRINITY · Rajalakshmi Engineering College · SEDS REC Chapter</span>
     </div>
-    <div class="footer-disclaimer">
-      Flight operations must be conducted with appropriate civil aviation authority supervision and frequency clearances.
+    <div class="footer-right">
+      <span>High-Altitude Flight Operations · Ground Station Avionics</span>
     </div>
   </footer>
+
+  <!-- Legacy Settings Drawer Hidden Container (Preserves ID references for JS safety) -->
+  <div id="settings-drawer" class="hidden">
+    <div id="settings-drawer-backdrop" class="hidden"></div>
+    <button id="settings-drawer-close" class="hidden"></button>
+    <button id="settings-open-btn" class="hidden"></button>
+    <input type="checkbox" id="setting-sound-alerts" class="hidden">
+    <canvas id="starfield" class="hidden"></canvas>
+  </div>
 
   <!-- CDN Dependencies: Leaflet 1.9.4 & Chart.js 4.4.3 -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 
-  <!-- Main ES Module Application Script -->
+  <!-- Core ES Module Application Script -->
   <script type="module" src="app.js"></script>
 </body>
 </html>

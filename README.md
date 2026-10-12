@@ -1,9 +1,15 @@
 # AERODRIFT 🎈
 
 **Stratospheric Balloon Tracking & Landing Prediction Dashboard**  
-*SEDHACKS '26 · Team TRINITY · Rajalakshmi Engineering College (SEDS REC Chapter)*
+A zero-build, static aerospace mission-control and flight-analysis platform designed for high-altitude balloon tracking, stratospheric envelope burst detection, and client-side Monte Carlo landing zone prediction.
 
-A zero-build, static avionics dashboard designed for real-time telemetry tracking, high-altitude envelope burst detection, and client-side Monte Carlo landing zone prediction for high-altitude weather balloons.
+### 🛰️ Subsystem Workspaces
+1. **Overview**: Live telemetry ribbon, integrated altitude trajectory profile, atmospheric synopsis, recovery forecast, and mission chronology.
+2. **Flight Analysis**: High-resolution multi-series plotting, atmospheric lapse rate ($T$ vs $Z$), barometric pressure ($P$ vs $Z$), horizontal wind sounding ($V_w$ vs $Z$), and 500m discretized sounding table.
+3. **Trajectory & Recovery**: CARTO Dark Matter geospatial map, 300-run Monte Carlo landing scatter cloud, 95% confidence covariance dispersion ellipse ($k=2.448$), and ground retrieval dossier.
+4. **Avionics**: Artificial horizon attitude indicator, 3-axis accelerometer and gyroscope engineering meters, wind drift compass rose, and GNSS/RF link telemetry.
+5. **Mission Operations**: Chronological event audit stream, guarded nichrome wire cutdown actuation console (5-second hold interlock), and restricted airspace (No-Go) monitoring.
+6. **Replay & Export**: Historical trajectory playback scrubber (1x to 20x speeds), built-in 30km flight simulator, and scientific data exports (CSV, GPX 1.1, GeoJSON).
 
 ---
 
