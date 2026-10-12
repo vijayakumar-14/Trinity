@@ -14,8 +14,16 @@
   <!-- Leaflet 1.9.4 CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 
+  <!-- CesiumJS 1.119 WGS84 3D Globe Engine -->
+  <link rel="stylesheet" href="https://cesium.com/downloads/cesiumjs/releases/1.119/Build/Cesium/Widgets/widgets.css">
+  <script>
+    window.CESIUM_BASE_URL = "https://cesium.com/downloads/cesiumjs/releases/1.119/Build/Cesium/";
+  </script>
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.119/Build/Cesium/Cesium.js"></script>
+
   <!-- Custom Scientific Stylesheet -->
   <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎈</text></svg>">
 </head>
 <body>
 
@@ -519,25 +527,49 @@
         <div class="panel map-wrapper-panel">
           <div class="panel-header">
             <div class="panel-title-group">
-              <span class="panel-title">GEOSPATIAL TRAJECTORY &amp; MONTE CARLO DISPERSION</span>
-              <span class="panel-subtitle">CARTO Dark Matter · WGS-84 Geodesic Integration</span>
+              <span class="panel-title">GEOSPATIAL TRAJECTORY · WGS84 3D GLOBE</span>
+              <span class="panel-subtitle">CesiumJS Satellite Geodesic Engine</span>
             </div>
             <div class="panel-actions">
-              <label class="layer-toggle-row font-mono" style="font-size: 11px;">
-                <input type="checkbox" id="follow-balloon-toggle" checked>
-                <span>AUTOFOCUS</span>
-              </label>
-              <button type="button" class="btn-secondary" id="map-center-balloon-btn" title="Center map on current balloon position">
+              <!-- 3D / 2D Engine Toggle -->
+              <div class="button-group-segment">
+                <button type="button" class="btn-segment active" id="btn-mode-3d">3D GLOBE</button>
+                <button type="button" class="btn-segment" id="btn-mode-2d">2D MAP</button>
+              </div>
+
+              <!-- Camera Presets -->
+              <div class="cam-presets-bar">
+                <button type="button" class="btn-cam-preset" id="cam-preset-global" title="Fly to complete Earth view in space">GLOBAL</button>
+                <button type="button" class="btn-cam-preset active" id="cam-preset-mission" title="Fly to framed mission flight arc view">MISSION</button>
+                <button type="button" class="btn-cam-preset" id="cam-preset-recovery" title="Fly to close tactical recovery touchdown target">RECOVERY</button>
+              </div>
+
+              <!-- Altitude Exaggeration Mode -->
+              <div class="alt-scale-selector-group">
+                <label for="select-alt-scale">ALT EXAG:</label>
+                <select id="select-alt-scale" title="Visual inspection altitude exaggeration (does not alter telemetry)">
+                  <option value="1" selected>1x (True Physics MSL)</option>
+                  <option value="2">2x (Visual Inspection)</option>
+                  <option value="5">5x (Visual Inspection)</option>
+                  <option value="10">10x (Visual Inspection)</option>
+                </select>
+              </div>
+
+              <button type="button" class="btn-secondary" id="map-center-balloon-btn" title="Center on current vehicle position">
                 <span>CENTER VEHICLE</span>
               </button>
-              <button type="button" class="btn-secondary" id="map-fit-bounds-btn" title="Fit all mission bounds">
+              <button type="button" class="btn-secondary" id="map-fit-bounds-btn" title="Reset view to fit mission bounds">
                 <span>FIT ALL BOUNDS</span>
               </button>
             </div>
           </div>
 
           <div class="map-canvas-container">
-            <div id="flight-map"></div>
+            <!-- 3D CesiumJS Globe -->
+            <div id="cesium-globe-container"></div>
+
+            <!-- 2D Leaflet Tactical Map (Toggleable) -->
+            <div id="flight-map" class="hidden"></div>
 
             <!-- Tactical Map HUD -->
             <div class="map-hud-strip">
@@ -560,6 +592,10 @@
               <div class="map-hud-item">
                 <span class="map-hud-label">PTS:</span>
                 <span class="map-hud-val" id="map-point-counter">0</span>
+              </div>
+              <div class="map-hud-item">
+                <span class="map-hud-label">DATUM:</span>
+                <span class="globe-status-tag" id="globe-status-tag">WGS84 ELLIPSOID · ESRI SATELLITE (1:1)</span>
               </div>
             </div>
 

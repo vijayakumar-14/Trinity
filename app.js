@@ -123,6 +123,21 @@ const state = {
     mcSamplesLayer: null
   },
 
+  // 3D CesiumJS Earth Globe (WGS84 Ellipsoid)
+  cesiumViewer: null,
+  cesiumEntities: {
+    trail: null,
+    balloon: null,
+    launch: null,
+    touchdown: null,
+    projectedLine: null,
+    ellipse: null,
+    noGo: null
+  },
+  mapMode: "3d", // "3d" (CesiumJS) | "2d" (Leaflet)
+  altitudeMultiplier: 1.0, // 1x default: true physical MSL altitude
+  activeCameraPreset: "mission",
+
   // Chart.js Instances
   overviewChart: null,
   analysisMasterChart: null,
@@ -135,6 +150,9 @@ const state = {
   events: [],
   alertCooldowns: {}
 };
+
+// Expose state globally for headless diagnostics and tests
+window.state = state;
 
 // DOM Helper
 const $ = (id) => document.getElementById(id);
@@ -727,8 +745,322 @@ function renderPredictionPanel() {
 }
 
 /* ============================================================================
- * SECTION 5: LEAFLET CARTOGRAPHIC VISUALIZATION
+ * SECTION 5: GEOSPATIAL ENGINE: CESIUMJS WGS84 3D GLOBE & 2D TACTICAL MAP
  * ============================================================================ */
+
+async function initCesiumGlobe() {
+  if (state.cesiumViewer || !window.Cesium) return;
+  const container = $("cesium-globe-container");
+  if (!container) return;
+
+  try {
+    state.cesiumViewer = new Cesium.Viewer("cesium-globe-container", {
+      animation: false,
+      baseLayerPicker: false,
+      fullscreenButton: false,
+      vrButton: false,
+      geocoder: false,
+      homeButton: false,
+      infoBox: false,
+      sceneModePicker: false,
+      selectionIndicator: false,
+      timeline: false,
+      navigationHelpButton: false,
+      navigationInstructionsInitiallyVisible: false,
+      scene3DOnly: true,
+      skyAtmosphere: new Cesium.SkyAtmosphere(),
+      terrainProvider: new Cesium.EllipsoidTerrainProvider() // WGS84 Reference Ellipsoid
+    });
+
+    const viewer = state.cesiumViewer;
+    viewer.scene.globe.showGroundAtmosphere = true;
+    viewer.scene.globe.depthTestAgainstTerrain = false;
+
+    // 1. Natural Earth II base layer (instant global fallback from Cesium Assets)
+    try {
+      const fallbackUrl = Cesium.buildModuleUrl("Assets/Textures/NaturalEarthII");
+      const fallbackProvider = await Cesium.TileMapServiceImageryProvider.fromUrl(fallbackUrl);
+      viewer.imageryLayers.addImageryProvider(fallbackProvider);
+    } catch (err) {
+      console.warn("Natural Earth base texture could not be loaded:", err);
+    }
+
+    // 2. High-resolution satellite imagery (ESRI World Imagery) streamed on top
+    try {
+      const esriProvider = await Cesium.ArcGisMapServerImageryProvider.fromUrl(
+        "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer",
+        { enablePickFeatures: false }
+      );
+      const esriLayer = viewer.imageryLayers.addImageryProvider(esriProvider);
+      esriLayer.errorEvent.addEventListener(() => {
+        console.warn("ESRI satellite tile error, loading OpenStreetMap fallback");
+        try {
+          viewer.imageryLayers.addImageryProvider(
+            new Cesium.UrlTemplateImageryProvider({
+              url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+              maximumLevel: 19
+            })
+          );
+        } catch (_) {}
+      });
+    } catch (err) {
+      console.warn("ESRI imagery provider error, loading OpenStreetMap fallback:", err);
+      try {
+        viewer.imageryLayers.addImageryProvider(
+          new Cesium.UrlTemplateImageryProvider({
+            url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+            maximumLevel: 19
+          })
+        );
+      } catch (_) {}
+    }
+
+    // 3. 3D Recorded Trajectory Polyline
+    state.cesiumEntities.trail = viewer.entities.add({
+      name: "Recorded Flight Trajectory",
+      polyline: {
+        positions: new Cesium.CallbackProperty(() => {
+          if (state.history.length < 2) return [];
+          return state.history
+            .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng) && Number.isFinite(p.alt))
+            .map((p) => Cesium.Cartesian3.fromDegrees(p.lng, p.lat, p.alt * state.altitudeMultiplier));
+        }, false),
+        width: 3.5,
+        material: Cesium.Color.fromCssColorString("#74C9CF")
+      }
+    });
+
+    // 4. 3D Balloon Vehicle Marker
+    state.cesiumEntities.balloon = viewer.entities.add({
+      name: "AERODRIFT Stratospheric Balloon",
+      position: new Cesium.CallbackProperty(() => {
+        const p = state.liveTelemetry;
+        if (!p || !Number.isFinite(p.lat) || !Number.isFinite(p.lng)) {
+          return Cesium.Cartesian3.fromDegrees(80.2707, 13.0827, 25);
+        }
+        return Cesium.Cartesian3.fromDegrees(p.lng, p.lat, (p.alt || 0) * state.altitudeMultiplier);
+      }, false),
+      point: {
+        pixelSize: 10,
+        color: Cesium.Color.fromCssColorString("#A7D96C"),
+        outlineColor: Cesium.Color.fromCssColorString("#101311"),
+        outlineWidth: 2,
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 5000000)
+      },
+      label: {
+        text: new Cesium.CallbackProperty(() => {
+          const p = state.liveTelemetry;
+          if (!p) return "";
+          const mult = state.altitudeMultiplier > 1 ? ` (${state.altitudeMultiplier}x Exag)` : "";
+          return `AERODRIFT · ${formatNum(p.alt, 0)}m MSL${mult}`;
+        }, false),
+        font: "11px JetBrains Mono",
+        fillColor: Cesium.Color.fromCssColorString("#E8EDE7"),
+        showBackground: true,
+        backgroundColor: Cesium.Color.fromCssColorString("rgba(23, 27, 24, 0.85)"),
+        pixelOffset: new Cesium.Cartesian2(0, -18),
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 2000000)
+      }
+    });
+
+    // 5. Launch Site Pad Marker on Surface
+    state.cesiumEntities.launch = viewer.entities.add({
+      name: "Launch Site (REC Chennai)",
+      position: new Cesium.CallbackProperty(() => {
+        if (!state.launchPoint) return null;
+        return Cesium.Cartesian3.fromDegrees(state.launchPoint.lng, state.launchPoint.lat, state.launchPoint.alt || 0);
+      }, false),
+      point: {
+        pixelSize: 8,
+        color: Cesium.Color.fromCssColorString("#74C9CF"),
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 1.5,
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 2500000)
+      },
+      label: {
+        text: "PAD REC CHENNAI",
+        font: "10px JetBrains Mono",
+        fillColor: Cesium.Color.fromCssColorString("#A1AAA2"),
+        pixelOffset: new Cesium.Cartesian2(0, 14),
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 1200000)
+      }
+    });
+
+    // 6. Projected Descent Vector Line
+    state.cesiumEntities.projectedLine = viewer.entities.add({
+      name: "Projected Descent Vector",
+      polyline: {
+        positions: new Cesium.CallbackProperty(() => {
+          const cur = state.liveTelemetry;
+          const pred = state.prediction;
+          if (!cur || !pred || !Number.isFinite(pred.lat) || !Number.isFinite(pred.lng)) return [];
+          return [
+            Cesium.Cartesian3.fromDegrees(cur.lng, cur.lat, (cur.alt || 0) * state.altitudeMultiplier),
+            Cesium.Cartesian3.fromDegrees(pred.lng, pred.lat, (state.settings.groundElevationM || 0))
+          ];
+        }, false),
+        width: 2.0,
+        material: new Cesium.PolylineDashMaterialProperty({
+          color: Cesium.Color.fromCssColorString("#E9B86A"),
+          dashLength: 16.0
+        })
+      }
+    });
+
+    // 7. Predicted Touchdown Target Marker on Surface
+    state.cesiumEntities.touchdown = viewer.entities.add({
+      name: "Predicted Touchdown Point",
+      position: new Cesium.CallbackProperty(() => {
+        const pred = state.prediction;
+        if (!pred || !Number.isFinite(pred.lat) || !Number.isFinite(pred.lng)) return null;
+        return Cesium.Cartesian3.fromDegrees(pred.lng, pred.lat, state.settings.groundElevationM || 0);
+      }, false),
+      point: {
+        pixelSize: 9,
+        color: Cesium.Color.fromCssColorString("#E9B86A"),
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 2,
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 2500000)
+      },
+      label: {
+        text: "TOUCHDOWN TARGET",
+        font: "10px JetBrains Mono",
+        fillColor: Cesium.Color.fromCssColorString("#E9B86A"),
+        pixelOffset: new Cesium.Cartesian2(0, 16),
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 1200000)
+      }
+    });
+
+    // 8. 95% Confidence Dispersion Ellipse on Surface
+    state.cesiumEntities.ellipse = viewer.entities.add({
+      name: "95% Confidence Dispersion Perimeter",
+      polygon: {
+        hierarchy: new Cesium.CallbackProperty(() => {
+          const coords = state.prediction.ellipseCoords;
+          if (!coords || coords.length === 0) return null;
+          const cartesianList = coords.map((c) =>
+            Cesium.Cartesian3.fromDegrees(c[1], c[0], (state.settings.groundElevationM || 0) + 5)
+          );
+          return new Cesium.PolygonHierarchy(cartesianList);
+        }, false),
+        material: Cesium.Color.fromCssColorString("rgba(233, 184, 106, 0.22)"),
+        outline: true,
+        outlineColor: Cesium.Color.fromCssColorString("#E9B86A"),
+        outlineWidth: 2
+      }
+    });
+
+    // 9. No-Go Restricted Zone on Surface
+    state.cesiumEntities.noGo = viewer.entities.add({
+      name: "Restricted Airspace Perimeter",
+      position: new Cesium.CallbackProperty(() => {
+        if (!state.settings.noGoZone.enabled) return null;
+        return Cesium.Cartesian3.fromDegrees(state.settings.noGoZone.lng, state.settings.noGoZone.lat, 0);
+      }, false),
+      ellipse: {
+        semiMajorAxis: new Cesium.CallbackProperty(() => state.settings.noGoZone.radiusKm * 1000, false),
+        semiMinorAxis: new Cesium.CallbackProperty(() => state.settings.noGoZone.radiusKm * 1000, false),
+        material: Cesium.Color.fromCssColorString("rgba(228, 119, 119, 0.15)"),
+        outline: true,
+        outlineColor: Cesium.Color.fromCssColorString("#E47777"),
+        outlineWidth: 1.5
+      }
+    });
+
+    // Set initial Mission Camera View
+    flyToMissionView(false);
+
+  } catch (err) {
+    console.error("CesiumJS init error:", err);
+    const statusTag = $("globe-status-tag");
+    if (statusTag) {
+      statusTag.textContent = "3D WEBGL FALLBACK (2D ACTIVE)";
+      statusTag.style.color = "var(--status-caution)";
+    }
+  }
+}
+
+function flyToGlobalView(animate = true) {
+  if (!state.cesiumViewer) return;
+  state.activeCameraPreset = "global";
+  updateCameraPresetButtons("global");
+  state.cesiumViewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(80.2707, 13.0827, 20000000.0), // 20,000 km in space
+    orientation: {
+      heading: Cesium.Math.toRadians(0.0),
+      pitch: Cesium.Math.toRadians(-90.0),
+      roll: 0.0
+    },
+    duration: animate ? 1.5 : 0
+  });
+}
+
+function flyToMissionView(animate = true) {
+  if (!state.cesiumViewer) return;
+  state.activeCameraPreset = "mission";
+  updateCameraPresetButtons("mission");
+  state.cesiumViewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(80.60, 12.30, 110000.0), // 110 km altitude south of corridor
+    orientation: {
+      heading: Cesium.Math.toRadians(0.0),
+      pitch: Cesium.Math.toRadians(-45.0),
+      roll: 0.0
+    },
+    duration: animate ? 1.5 : 0
+  });
+}
+
+function flyToRecoveryView(animate = true) {
+  if (!state.cesiumViewer) return;
+  state.activeCameraPreset = "recovery";
+  updateCameraPresetButtons("recovery");
+  const lat = state.prediction.lat || (state.liveTelemetry ? state.liveTelemetry.lat : 13.0827);
+  const lng = state.prediction.lng || (state.liveTelemetry ? state.liveTelemetry.lng : 80.2707);
+  state.cesiumViewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(lng, lat - 0.14, 22000.0), // 22 km altitude south of touchdown
+    orientation: {
+      heading: Cesium.Math.toRadians(0.0),
+      pitch: Cesium.Math.toRadians(-55.0),
+      roll: 0.0
+    },
+    duration: animate ? 1.5 : 0
+  });
+}
+
+function updateCameraPresetButtons(activePreset) {
+  const btnGlobal = $("cam-preset-global");
+  const btnMission = $("cam-preset-mission");
+  const btnRecovery = $("cam-preset-recovery");
+
+  if (btnGlobal) btnGlobal.classList.toggle("active", activePreset === "global");
+  if (btnMission) btnMission.classList.toggle("active", activePreset === "mission");
+  if (btnRecovery) btnRecovery.classList.toggle("active", activePreset === "recovery");
+}
+
+function setMapDisplayMode(mode) {
+  state.mapMode = mode;
+  const globeContainer = $("cesium-globe-container");
+  const leafletContainer = $("flight-map");
+  const btn3d = $("btn-mode-3d");
+  const btn2d = $("btn-mode-2d");
+
+  if (mode === "3d") {
+    if (globeContainer) globeContainer.classList.remove("hidden");
+    if (leafletContainer) leafletContainer.classList.add("hidden");
+    if (btn3d) btn3d.classList.add("active");
+    if (btn2d) btn2d.classList.remove("active");
+    if (state.cesiumViewer) state.cesiumViewer.resize();
+  } else {
+    if (globeContainer) globeContainer.classList.add("hidden");
+    if (leafletContainer) leafletContainer.classList.remove("hidden");
+    if (btn3d) btn3d.classList.remove("active");
+    if (btn2d) btn2d.classList.add("active");
+    if (state.map) {
+      state.map.invalidateSize();
+      if (state.liveTelemetry) updateMapTelemetry(state.liveTelemetry);
+    }
+  }
+}
 
 function initMap() {
   if (state.map || !window.L) return;
@@ -854,15 +1186,16 @@ function updateMapTelemetry(current) {
     if ($("hud-dist-launch")) $("hud-dist-launch").textContent = `${dLaunch.toFixed(1)} km`;
   }
 
-  if (state.settings.mapFollow && state.activeView === "trajectory") {
+  if (state.settings.mapFollow && state.activeView === "trajectory" && state.mapMode === "2d") {
     state.map.panTo([current.lat, current.lng], { animate: true, duration: 0.5 });
   }
 }
 
 function updateMapPrediction() {
-  if (!state.map) return;
   const p = state.prediction;
   const current = state.liveTelemetry;
+
+  if (!state.map) return;
 
   if (Number.isFinite(p.lat) && Number.isFinite(p.lng)) {
     // 1. Predicted Marker
@@ -888,7 +1221,7 @@ function updateMapPrediction() {
     if (state.mapLayers.mcSamplesLayer) {
       state.mapLayers.mcSamplesLayer.clearLayers();
       if (p.samples && p.samples.length > 0) {
-        // Decimate points for smooth 60fps cartographic rendering
+        // Decimate points for smooth cartographic rendering
         const step = Math.max(1, Math.floor(p.samples.length / 120));
         for (let i = 0; i < p.samples.length; i += step) {
           const pt = p.samples[i];
@@ -906,6 +1239,11 @@ function updateMapPrediction() {
 }
 
 function fitAllMapBounds() {
+  if (state.mapMode === "3d") {
+    flyToMissionView(true);
+    return;
+  }
+
   if (!state.map) return;
   const pts = state.history
     .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
@@ -1999,6 +2337,9 @@ function switchWorkspaceView(viewId) {
 
   // 3. View-specific lifecycle adjustments
   if (viewId === "trajectory") {
+    if (!state.cesiumViewer && window.Cesium) {
+      initCesiumGlobe();
+    }
     setTimeout(() => {
       if (state.map) {
         state.map.invalidateSize();
@@ -2006,6 +2347,11 @@ function switchWorkspaceView(viewId) {
           updateMapTelemetry(state.liveTelemetry);
           updateMapPrediction();
         }
+      }
+      if (state.cesiumViewer) {
+        try {
+          state.cesiumViewer.resize();
+        } catch (_) {}
       }
     }, 60);
   } else if (viewId === "analysis" || viewId === "overview") {
@@ -2157,8 +2503,19 @@ function initUIListeners() {
   if ($("map-fit-bounds-btn")) $("map-fit-bounds-btn").addEventListener("click", fitAllMapBounds);
   if ($("map-center-balloon-btn")) {
     $("map-center-balloon-btn").addEventListener("click", () => {
-      if (state.liveTelemetry && state.map) {
-        state.map.setView([state.liveTelemetry.lat, state.liveTelemetry.lng], 13);
+      if (state.liveTelemetry) {
+        if (state.mapMode === "3d" && state.cesiumViewer && window.Cesium) {
+          state.cesiumViewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(
+              state.liveTelemetry.lng,
+              state.liveTelemetry.lat,
+              Math.max(10000, (state.liveTelemetry.alt || 1000) * state.altitudeMultiplier + 5000)
+            ),
+            duration: 1.0
+          });
+        } else if (state.map) {
+          state.map.setView([state.liveTelemetry.lat, state.liveTelemetry.lng], 13);
+        }
       }
     });
   }
@@ -2343,6 +2700,36 @@ function initUIListeners() {
       if ($("setup-banner")) $("setup-banner").classList.add("hidden");
     });
   }
+
+  // 14. 3D Globe vs 2D Map toggles & camera presets & altitude scaling
+  if ($("btn-mode-3d")) {
+    $("btn-mode-3d").addEventListener("click", () => setMapDisplayMode("3d"));
+  }
+  if ($("btn-mode-2d")) {
+    $("btn-mode-2d").addEventListener("click", () => setMapDisplayMode("2d"));
+  }
+  if ($("cam-preset-global")) {
+    $("cam-preset-global").addEventListener("click", () => flyToGlobalView(true));
+  }
+  if ($("cam-preset-mission")) {
+    $("cam-preset-mission").addEventListener("click", () => flyToMissionView(true));
+  }
+  if ($("cam-preset-recovery")) {
+    $("cam-preset-recovery").addEventListener("click", () => flyToRecoveryView(true));
+  }
+  if ($("select-alt-scale")) {
+    $("select-alt-scale").addEventListener("change", (e) => {
+      const mult = parseFloat(e.target.value) || 1.0;
+      state.altitudeMultiplier = mult;
+      const tag = $("globe-status-tag");
+      if (tag) {
+        tag.textContent = mult === 1 ? "WGS84 ELLIPSOID · ESRI SATELLITE (1:1)" : `WGS84 · ${mult.toFixed(1)}x EXAGGERATED`;
+      }
+      if (state.cesiumViewer && state.cesiumViewer.scene) {
+        state.cesiumViewer.scene.requestRender();
+      }
+    });
+  }
 }
 
 /* ============================================================================
@@ -2352,6 +2739,13 @@ function initUIListeners() {
 function init() {
   runSelfTests();
   initMap();
+  if (window.Cesium) {
+    initCesiumGlobe();
+  } else {
+    window.addEventListener("load", () => {
+      if (window.Cesium && !state.cesiumViewer) initCesiumGlobe();
+    });
+  }
   initChart();
   initCutdownGuardedFlow();
   initUIListeners();
