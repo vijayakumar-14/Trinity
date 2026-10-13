@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://cx6q8vyg7k4la"]
+
+[ext_resource type="Script" path="res://scripts/core/main_orchestrator.gd" id="1_main"]
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_main")

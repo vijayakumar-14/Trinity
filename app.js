@@ -101,13 +101,43 @@ const state = {
     }
   },
 
-  // Historical Trajectory Replay
+  // Authoritative 3D Flight Simulation Engine
+  sim: {
+    active: false,
+    isPlaying: false,
+    currentTimeMs: 0,
+    startTimeMs: 0,
+    endTimeMs: 0,
+    durationMs: 0,
+    speed: 1.0,            // 0.25, 0.5, 1.0, 2.0, 5.0, 10.0
+    currentIndex: 0,
+    lastWallClockMs: 0,
+    rafId: null,
+    apogeeM: 0,
+    apogeeIndex: -1,
+    burstIndex: -1,
+    touchdownIndex: -1,
+    cameraMode: "orbit",   // "orbit" | "follow" | "chase" | "ground"
+    scaleMode: "physical", // "physical" | "enhanced"
+    scaleMultiplier: 5.0,  // used when scaleMode is "enhanced"
+    showTrail: true,
+    showFuturePath: true,
+    showModel: true,
+    showWindVector: true,
+    showMonteCarlo: true,
+    showEllipse: true,
+    showNoGo: true,
+    interpolatedPacket: null,
+    chaseSmoothHeading: 0
+  },
+
+  // Backward-compatible replay reference pointing to sim
   replay: {
     active: false,
     speed: 1,
     index: 0,
     timer: null,
-    paused: false
+    paused: true
   },
 
   // Leaflet Map & Layer References
@@ -126,11 +156,13 @@ const state = {
   // 3D CesiumJS Earth Globe (WGS84 Ellipsoid)
   cesiumViewer: null,
   cesiumEntities: {
-    trail: null,
-    balloon: null,
+    balloonModel: null,
+    ascentTrail: null,
+    descentTrail: null,
+    futureTrail: null,
+    windVector: null,
     launch: null,
     touchdown: null,
-    projectedLine: null,
     ellipse: null,
     noGo: null
   },
@@ -317,7 +349,29 @@ function runSelfTests() {
     const eig = eigenDecomposition2x2(100, 0, 100);
     console.assert(Math.abs(eig.semiMajor - 24.477) < 0.05, `Eigen semi-major failed: ${eig.semiMajor}`);
 
-    console.log("%c✓ ALL MATHEMATICAL SELF-TESTS PASSED SUCCESSFULLY", "color: #A7D96C; font-weight: bold;");
+    // 6. Simulation Continuous State Interpolation
+    const origHist = state.history;
+    const origSim = { ...state.sim };
+    state.history = [
+      { ts: 1000, lat: 13.0, lng: 80.0, alt: 100, computed_vs: 5.0, gps_speed: 10.0 },
+      { ts: 2000, lat: 13.2, lng: 80.4, alt: 200, computed_vs: 7.0, gps_speed: 20.0 }
+    ];
+    state.sim.active = true;
+    state.sim.currentTimeMs = 1500;
+    const interp = getSimInterpolatedState();
+    console.assert(Math.abs(interp.lat - 13.1) < 0.0001, `Interpolated lat failed: ${interp.lat}`);
+    console.assert(Math.abs(interp.alt - 150) < 0.0001, `Interpolated alt failed: ${interp.alt}`);
+    console.assert(Math.abs(interp.vs - 6.0) < 0.0001, `Interpolated vs failed: ${interp.vs}`);
+    state.history = origHist;
+    state.sim = origSim;
+
+    // 7. Simulation Scale Mode Validation
+    setSimScaleMode("enhanced", 5.0);
+    console.assert(state.sim.scaleMode === "enhanced" && state.sim.scaleMultiplier === 5.0, "Enhanced scale mode failed");
+    setSimScaleMode("physical", 1.0);
+    console.assert(state.sim.scaleMode === "physical" && state.sim.scaleMultiplier === 1.0, "Physical scale mode failed");
+
+    console.log("%c✓ ALL MATHEMATICAL & SIMULATION SELF-TESTS PASSED SUCCESSFULLY", "color: #A7D96C; font-weight: bold;");
   } catch (err) {
     console.error("Self-test encountered an error:", err);
   }
@@ -403,11 +457,20 @@ function recordEvent(title, message, severity = "info") {
   if (container) {
     const el = document.createElement("div");
     el.className = "event-entry";
+    el.dataset.eventTs = state.sim && state.sim.active ? state.sim.currentTimeMs : Date.now();
+    el.style.cursor = "pointer";
+    el.title = "Click to jump simulation timeline to this event";
     el.innerHTML = `
       <span class="event-time">${timeStr}</span>
       <span class="event-badge ${severity}">${severity.toUpperCase()}</span>
       <span class="event-desc"><strong>${title}:</strong> ${message}</span>
     `;
+    el.addEventListener("click", () => {
+      if (state.sim && state.sim.active && el.dataset.eventTs) {
+        seekSimToTime(Number(el.dataset.eventTs));
+        showToast("TIMELINE SEEK", `Jumped to event: ${title}`, "info");
+      }
+    });
     container.insertBefore(el, container.firstChild);
   }
 
@@ -499,6 +562,24 @@ function getWindAtAltitude(alt, windData, fallbackU, fallbackV) {
   }
 
   return nearest || { u: fallbackU, v: fallbackV };
+}
+
+/**
+ * Retrieve atmospheric wind vector, speed, bearing and cardinal at given altitude MSL.
+ */
+export function getCurrentLayerWind(alt) {
+  if (!Number.isFinite(alt)) return { u: 0, v: 0, speed: 0, bearing: 0, cardinal: "--" };
+  const windData = buildWindProfile();
+  const w = getWindAtAltitude(alt, windData, 0, 0);
+  const speed = Math.hypot(w.u, w.v);
+  const bearing = (Math.atan2(w.u, w.v) * 180 / Math.PI + 360) % 360;
+  return {
+    u: w.u,
+    v: w.v,
+    speed,
+    bearing,
+    cardinal: cardinalDirection(bearing)
+  };
 }
 
 /**
@@ -745,8 +826,118 @@ function renderPredictionPanel() {
 }
 
 /* ============================================================================
- * SECTION 5: GEOSPATIAL ENGINE: CESIUMJS WGS84 3D GLOBE & 2D TACTICAL MAP
+ * SECTION 5: GEOSPATIAL ENGINE: CESIUMJS WGS84 3D GLOBE & SIMULATION VISUALIZER
  * ============================================================================ */
+
+/**
+ * Authoritative continuous interpolation of vehicle telemetry at current simulation time.
+ * Provides 60fps smooth movement across discrete historical flight samples.
+ */
+export function getSimInterpolatedState() {
+  if (state.history.length === 0) return state.liveTelemetry;
+  if (!state.sim.active) return state.liveTelemetry;
+
+  const t = state.sim.currentTimeMs;
+  const hist = state.history;
+
+  if (t <= hist[0].ts) {
+    const p = hist[0];
+    const res = {
+      ...p,
+      vs: p.computed_vs || 0,
+      speed: p.gps_speed || 0,
+      heading: p.gps_course || 0,
+      flightPhase: (p.alt < 50 && Math.abs(p.computed_vs || 0) < 1.0) ? "PRE-LAUNCH" : "ASCENT",
+      ts: p.ts
+    };
+    state.sim.interpolatedPacket = res;
+    return res;
+  }
+
+  if (t >= hist[hist.length - 1].ts) {
+    const p = hist[hist.length - 1];
+    const res = {
+      ...p,
+      vs: p.computed_vs || 0,
+      speed: p.gps_speed || 0,
+      heading: p.gps_course || 0,
+      flightPhase: "TOUCHDOWN",
+      ts: p.ts
+    };
+    state.sim.interpolatedPacket = res;
+    return res;
+  }
+
+  // Binary search for exact bounding interval
+  let low = 0;
+  let high = hist.length - 1;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    if (hist[mid].ts <= t) {
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  const i0 = Math.max(0, high);
+  const i1 = Math.min(hist.length - 1, i0 + 1);
+
+  state.sim.currentIndex = i0;
+
+  const p0 = hist[i0];
+  const p1 = hist[i1];
+
+  const dt = (p1.ts - p0.ts) || 1;
+  const alpha = Math.max(0, Math.min(1, (t - p0.ts) / dt));
+
+  const lat = p0.lat + alpha * (p1.lat - p0.lat);
+  const lng = p0.lng + alpha * (p1.lng - p0.lng);
+  const alt = p0.alt + alpha * (p1.alt - p0.alt);
+  const vs = (p0.computed_vs || 0) + alpha * ((p1.computed_vs || 0) - (p0.computed_vs || 0));
+  const speed = (p0.gps_speed || 0) + alpha * ((p1.gps_speed || 0) - (p0.gps_speed || 0));
+  const heading = p0.gps_course !== undefined ? p0.gps_course : calculateBearing(p0.lat, p0.lng, p1.lat, p1.lng);
+  const temp = (p0.temp || 0) + alpha * ((p1.temp || 0) - (p0.temp || 0));
+  const pressure = (p0.pressure || 0) + alpha * ((p1.pressure || 0) - (p0.pressure || 0));
+  const roll = (p0.roll || 0) + alpha * ((p1.roll || 0) - (p0.roll || 0));
+  const pitch = (p0.pitch || 0) + alpha * ((p1.pitch || 0) - (p0.pitch || 0));
+
+  let flightPhase = "ASCENT";
+  if (state.sim.burstIndex >= 0 && i0 >= state.sim.burstIndex) {
+    flightPhase = (state.sim.touchdownIndex >= 0 && i0 >= state.sim.touchdownIndex) ? "TOUCHDOWN" : "DESCENT";
+  } else if (alt < 100 && Math.abs(vs) < 1.0) {
+    flightPhase = "PRE-LAUNCH";
+  } else if (alt > 15000 && Math.abs(vs) < 1.0) {
+    flightPhase = "FLOAT/BURST ZONE";
+  }
+
+  const result = {
+    ...p0,
+    lat,
+    lng,
+    alt,
+    computed_vs: vs,
+    vs,
+    gps_speed: speed,
+    speed,
+    gps_course: heading,
+    heading,
+    temp,
+    pressure,
+    roll,
+    pitch,
+    flightPhase,
+    ts: t
+  };
+
+  state.sim.interpolatedPacket = result;
+  return result;
+}
+
+export function getSimFlightPhase() {
+  const cur = getSimInterpolatedState();
+  return cur ? cur.flightPhase : state.flightPhase;
+}
 
 async function initCesiumGlobe() {
   if (state.cesiumViewer || !window.Cesium) return;
@@ -815,55 +1006,179 @@ async function initCesiumGlobe() {
       } catch (_) {}
     }
 
-    // 3. 3D Recorded Trajectory Polyline
-    state.cesiumEntities.trail = viewer.entities.add({
-      name: "Recorded Flight Trajectory",
+    // 3. 3D Recorded Trajectory Polyline (Ascent: Solid Cyan)
+    state.cesiumEntities.ascentTrail = viewer.entities.add({
+      name: "Recorded Ascent Trajectory",
       polyline: {
         positions: new Cesium.CallbackProperty(() => {
-          if (state.history.length < 2) return [];
-          return state.history
-            .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng) && Number.isFinite(p.alt))
-            .map((p) => Cesium.Cartesian3.fromDegrees(p.lng, p.lat, p.alt * state.altitudeMultiplier));
+          if (!state.sim.showTrail || state.history.length === 0) return [];
+          const mult = state.sim.scaleMode === "enhanced" ? state.sim.scaleMultiplier : 1.0;
+          const cur = getSimInterpolatedState();
+          const burstIdx = state.sim.burstIndex >= 0 ? state.sim.burstIndex : state.history.length - 1;
+          const endIdx = Math.min(state.sim.currentIndex, burstIdx);
+
+          const pts = [];
+          for (let i = 0; i <= endIdx && i < state.history.length; i++) {
+            const p = state.history[i];
+            if (Number.isFinite(p.lat) && Number.isFinite(p.lng) && Number.isFinite(p.alt)) {
+              pts.push(Cesium.Cartesian3.fromDegrees(p.lng, p.lat, p.alt * mult));
+            }
+          }
+          if (cur && (state.sim.burstIndex < 0 || state.sim.currentIndex < state.sim.burstIndex)) {
+            pts.push(Cesium.Cartesian3.fromDegrees(cur.lng, cur.lat, cur.alt * mult));
+          }
+          return pts;
         }, false),
         width: 3.5,
-        material: Cesium.Color.fromCssColorString("#74C9CF")
+        material: Cesium.Color.fromCssColorString("#74C9CF"),
+        show: new Cesium.CallbackProperty(() => state.sim.showTrail, false)
       }
     });
 
-    // 4. 3D Balloon Vehicle Marker
-    state.cesiumEntities.balloon = viewer.entities.add({
-      name: "AERODRIFT Stratospheric Balloon",
+    // 4. 3D Recorded Trajectory Polyline (Descent: Solid Amber)
+    state.cesiumEntities.descentTrail = viewer.entities.add({
+      name: "Recorded Descent Trajectory",
+      polyline: {
+        positions: new Cesium.CallbackProperty(() => {
+          if (!state.sim.showTrail || state.history.length === 0) return [];
+          if (state.sim.burstIndex < 0 || state.sim.currentIndex < state.sim.burstIndex) return [];
+          const mult = state.sim.scaleMode === "enhanced" ? state.sim.scaleMultiplier : 1.0;
+          const cur = getSimInterpolatedState();
+          const startIdx = state.sim.burstIndex;
+          const endIdx = state.sim.currentIndex;
+
+          const pts = [];
+          for (let i = startIdx; i <= endIdx && i < state.history.length; i++) {
+            const p = state.history[i];
+            if (Number.isFinite(p.lat) && Number.isFinite(p.lng) && Number.isFinite(p.alt)) {
+              pts.push(Cesium.Cartesian3.fromDegrees(p.lng, p.lat, p.alt * mult));
+            }
+          }
+          if (cur) {
+            pts.push(Cesium.Cartesian3.fromDegrees(cur.lng, cur.lat, cur.alt * mult));
+          }
+          return pts;
+        }, false),
+        width: 3.5,
+        material: Cesium.Color.fromCssColorString("#E9B86A"),
+        show: new Cesium.CallbackProperty(() => state.sim.showTrail, false)
+      }
+    });
+
+    // 5. Future / Forecast Trajectory Polyline (Dashed Amber)
+    state.cesiumEntities.futureTrail = viewer.entities.add({
+      name: "Forecast Descent Path",
+      polyline: {
+        positions: new Cesium.CallbackProperty(() => {
+          if (!state.sim.showFuturePath || state.history.length === 0) return [];
+          const mult = state.sim.scaleMode === "enhanced" ? state.sim.scaleMultiplier : 1.0;
+          const cur = getSimInterpolatedState();
+          if (!cur) return [];
+
+          const pts = [Cesium.Cartesian3.fromDegrees(cur.lng, cur.lat, cur.alt * mult)];
+          for (let i = state.sim.currentIndex + 1; i < state.history.length; i++) {
+            const p = state.history[i];
+            if (Number.isFinite(p.lat) && Number.isFinite(p.lng) && Number.isFinite(p.alt)) {
+              pts.push(Cesium.Cartesian3.fromDegrees(p.lng, p.lat, p.alt * mult));
+            }
+          }
+          return pts;
+        }, false),
+        width: 2.0,
+        material: new Cesium.PolylineDashMaterialProperty({
+          color: Cesium.Color.fromCssColorString("rgba(233, 184, 106, 0.75)"),
+          dashLength: 14.0
+        }),
+        show: new Cesium.CallbackProperty(() => state.sim.showFuturePath, false)
+      }
+    });
+
+    // 6. 3D Atmospheric Wind Vector Arrow at Vehicle Altitude
+    state.cesiumEntities.windVector = viewer.entities.add({
+      name: "Atmospheric Wind Vector",
+      polyline: {
+        positions: new Cesium.CallbackProperty(() => {
+          if (!state.sim.showWindVector) return [];
+          const cur = getSimInterpolatedState();
+          if (!cur) return [];
+          const mult = state.sim.scaleMode === "enhanced" ? state.sim.scaleMultiplier : 1.0;
+          const wind = getCurrentLayerWind(cur.alt);
+          if (wind.speed < 0.5) return [];
+
+          const scaleM = 60.0; // 60 meters visual length per m/s
+          const p1 = Cesium.Cartesian3.fromDegrees(cur.lng, cur.lat, cur.alt * mult);
+          const p2 = destinationPoint(cur.lat, cur.lng, wind.u * scaleM, wind.v * scaleM);
+          const c2 = Cesium.Cartesian3.fromDegrees(p2.lng, p2.lat, cur.alt * mult);
+          return [p1, c2];
+        }, false),
+        width: 3.5,
+        material: new Cesium.PolylineArrowMaterialProperty(Cesium.Color.fromCssColorString("#74C9CF")),
+        show: new Cesium.CallbackProperty(() => state.sim.showWindVector, false)
+      }
+    });
+
+    // 7. 3D Balloon Vehicle Assembly Model (Real GLB Geometry, Rigging & Payload)
+    state.cesiumEntities.balloonModel = viewer.entities.add({
+      name: "AERODRIFT Stratospheric Balloon Assembly",
       position: new Cesium.CallbackProperty(() => {
-        const p = state.liveTelemetry;
-        if (!p || !Number.isFinite(p.lat) || !Number.isFinite(p.lng)) {
-          return Cesium.Cartesian3.fromDegrees(80.2707, 13.0827, 25);
-        }
-        return Cesium.Cartesian3.fromDegrees(p.lng, p.lat, (p.alt || 0) * state.altitudeMultiplier);
+        const cur = getSimInterpolatedState();
+        if (!cur) return Cesium.Cartesian3.fromDegrees(80.2707, 13.0827, 25);
+        const mult = state.sim.scaleMode === "enhanced" ? state.sim.scaleMultiplier : 1.0;
+        return Cesium.Cartesian3.fromDegrees(cur.lng, cur.lat, cur.alt * mult);
       }, false),
-      point: {
-        pixelSize: 10,
-        color: Cesium.Color.fromCssColorString("#A7D96C"),
-        outlineColor: Cesium.Color.fromCssColorString("#101311"),
-        outlineWidth: 2,
-        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 5000000)
+      orientation: new Cesium.CallbackProperty(() => {
+        const cur = getSimInterpolatedState();
+        if (!cur) return Cesium.Quaternion.IDENTITY;
+        const mult = state.sim.scaleMode === "enhanced" ? state.sim.scaleMultiplier : 1.0;
+        const pos = Cesium.Cartesian3.fromDegrees(cur.lng, cur.lat, cur.alt * mult);
+        const h = Cesium.Math.toRadians(cur.heading || 0);
+        const p = Cesium.Math.toRadians(cur.pitch || 0);
+        const r = Cesium.Math.toRadians(cur.roll || 0);
+        const hpr = new Cesium.HeadingPitchRoll(h, p, r);
+        return Cesium.Transforms.headingPitchRollQuaternion(pos, hpr);
+      }, false),
+      model: {
+        uri: new Cesium.CallbackProperty(() => {
+          const cur = getSimInterpolatedState();
+          const phase = cur ? cur.flightPhase : "ASCENT";
+          if (phase === "DESCENT" || phase === "TOUCHDOWN") {
+            return "assets/parachute_descent.glb";
+          }
+          return "assets/balloon_assembly.glb";
+        }, false),
+        minimumPixelSize: 52,
+        maximumScale: 500,
+        scale: new Cesium.CallbackProperty(() => {
+          const cur = getSimInterpolatedState();
+          if (!cur) return 1.0;
+          const visualBoost = state.sim.scaleMode === "enhanced" ? 2.5 : 1.0;
+          if (cur.flightPhase === "DESCENT" || cur.flightPhase === "TOUCHDOWN") {
+            return 1.4 * visualBoost;
+          }
+          // Physical balloon expansion with altitude: P0/P ~ exp(h/7200) -> radius exp(h/21600)
+          const expFactor = Math.min(2.8, Math.exp((cur.alt || 0) / 21600));
+          return expFactor * visualBoost;
+        }, false)
       },
       label: {
         text: new Cesium.CallbackProperty(() => {
-          const p = state.liveTelemetry;
-          if (!p) return "";
-          const mult = state.altitudeMultiplier > 1 ? ` (${state.altitudeMultiplier}x Exag)` : "";
-          return `AERODRIFT · ${formatNum(p.alt, 0)}m MSL${mult}`;
+          const cur = getSimInterpolatedState();
+          if (!cur) return "";
+          const exag = state.sim.scaleMode === "enhanced" ? ` [${state.sim.scaleMultiplier}x EXAG]` : "";
+          const vsSign = cur.vs >= 0 ? "+" : "";
+          return `AERODRIFT · ${cur.flightPhase}\n${formatNum(cur.alt, 0)}m MSL · ${vsSign}${formatNum(cur.vs, 1)}m/s${exag}`;
         }, false),
-        font: "11px JetBrains Mono",
+        font: "11px 'JetBrains Mono', monospace",
         fillColor: Cesium.Color.fromCssColorString("#E8EDE7"),
         showBackground: true,
-        backgroundColor: Cesium.Color.fromCssColorString("rgba(23, 27, 24, 0.85)"),
-        pixelOffset: new Cesium.Cartesian2(0, -18),
-        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 2000000)
-      }
+        backgroundColor: Cesium.Color.fromCssColorString("rgba(16, 19, 17, 0.88)"),
+        pixelOffset: new Cesium.Cartesian2(0, -36),
+        distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 1800000)
+      },
+      show: new Cesium.CallbackProperty(() => state.sim.showModel, false)
     });
 
-    // 5. Launch Site Pad Marker on Surface
+    // 8. Launch Site Pad Marker on Surface
     state.cesiumEntities.launch = viewer.entities.add({
       name: "Launch Site (REC Chennai)",
       position: new Cesium.CallbackProperty(() => {
@@ -879,35 +1194,14 @@ async function initCesiumGlobe() {
       },
       label: {
         text: "PAD REC CHENNAI",
-        font: "10px JetBrains Mono",
+        font: "10px 'JetBrains Mono', monospace",
         fillColor: Cesium.Color.fromCssColorString("#A1AAA2"),
         pixelOffset: new Cesium.Cartesian2(0, 14),
         distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 1200000)
       }
     });
 
-    // 6. Projected Descent Vector Line
-    state.cesiumEntities.projectedLine = viewer.entities.add({
-      name: "Projected Descent Vector",
-      polyline: {
-        positions: new Cesium.CallbackProperty(() => {
-          const cur = state.liveTelemetry;
-          const pred = state.prediction;
-          if (!cur || !pred || !Number.isFinite(pred.lat) || !Number.isFinite(pred.lng)) return [];
-          return [
-            Cesium.Cartesian3.fromDegrees(cur.lng, cur.lat, (cur.alt || 0) * state.altitudeMultiplier),
-            Cesium.Cartesian3.fromDegrees(pred.lng, pred.lat, (state.settings.groundElevationM || 0))
-          ];
-        }, false),
-        width: 2.0,
-        material: new Cesium.PolylineDashMaterialProperty({
-          color: Cesium.Color.fromCssColorString("#E9B86A"),
-          dashLength: 16.0
-        })
-      }
-    });
-
-    // 7. Predicted Touchdown Target Marker on Surface
+    // 9. Predicted Touchdown Target Marker on Surface
     state.cesiumEntities.touchdown = viewer.entities.add({
       name: "Predicted Touchdown Point",
       position: new Cesium.CallbackProperty(() => {
@@ -924,14 +1218,14 @@ async function initCesiumGlobe() {
       },
       label: {
         text: "TOUCHDOWN TARGET",
-        font: "10px JetBrains Mono",
+        font: "10px 'JetBrains Mono', monospace",
         fillColor: Cesium.Color.fromCssColorString("#E9B86A"),
         pixelOffset: new Cesium.Cartesian2(0, 16),
         distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 1200000)
       }
     });
 
-    // 8. 95% Confidence Dispersion Ellipse on Surface
+    // 10. 95% Confidence Dispersion Ellipse on Surface
     state.cesiumEntities.ellipse = viewer.entities.add({
       name: "95% Confidence Dispersion Perimeter",
       polygon: {
@@ -946,11 +1240,12 @@ async function initCesiumGlobe() {
         material: Cesium.Color.fromCssColorString("rgba(233, 184, 106, 0.22)"),
         outline: true,
         outlineColor: Cesium.Color.fromCssColorString("#E9B86A"),
-        outlineWidth: 2
+        outlineWidth: 2,
+        show: new Cesium.CallbackProperty(() => state.sim.showEllipse, false)
       }
     });
 
-    // 9. No-Go Restricted Zone on Surface
+    // 11. No-Go Restricted Airspace Zone on Surface
     state.cesiumEntities.noGo = viewer.entities.add({
       name: "Restricted Airspace Perimeter",
       position: new Cesium.CallbackProperty(() => {
@@ -963,11 +1258,34 @@ async function initCesiumGlobe() {
         material: Cesium.Color.fromCssColorString("rgba(228, 119, 119, 0.15)"),
         outline: true,
         outlineColor: Cesium.Color.fromCssColorString("#E47777"),
-        outlineWidth: 1.5
+        outlineWidth: 1.5,
+        show: new Cesium.CallbackProperty(() => state.sim.showNoGo, false)
       }
     });
 
-    // Set initial Mission Camera View
+    // Interactive ScreenSpaceEventHandler for 3D clicks
+    const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+    handler.setInputAction((click) => {
+      const picked = viewer.scene.pick(click.position);
+      if (Cesium.defined(picked) && picked.id) {
+        const id = picked.id;
+        if (id === state.cesiumEntities.balloonModel) {
+          setSimCameraMode("follow");
+          showToast("CAMERA MODE: FOLLOW", "Camera locked to ascending balloon assembly.", "info");
+        } else if (id === state.cesiumEntities.launch && state.launchPoint) {
+          viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(state.launchPoint.lng, state.launchPoint.lat, 2500),
+            duration: 1.2
+          });
+          showToast("LAUNCH SITE", "Pad REC Chennai (13.0827°N, 80.2707°E)", "info");
+        } else if (id === state.cesiumEntities.touchdown) {
+          flyToRecoveryView(true);
+          showToast("TOUCHDOWN TARGET", "Centered on predicted landing zone.", "info");
+        }
+      }
+    }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+    // Initial camera view
     flyToMissionView(false);
 
   } catch (err) {
@@ -1025,6 +1343,63 @@ function flyToRecoveryView(animate = true) {
     },
     duration: animate ? 1.5 : 0
   });
+}
+
+export function setSimCameraMode(mode) {
+  state.sim.cameraMode = mode;
+  const btns = document.querySelectorAll(".btn-sim-cam");
+  btns.forEach(b => b.classList.toggle("active", b.dataset.cam === mode));
+
+  if (!state.cesiumViewer) return;
+
+  if (mode === "follow") {
+    state.cesiumViewer.trackedEntity = state.cesiumEntities.balloonModel;
+  } else {
+    state.cesiumViewer.trackedEntity = undefined;
+  }
+
+  if (mode === "orbit") {
+    showToast("CAMERA: ORBIT", "Free 3D rotation, tilt, and zoom active.", "info");
+  } else if (mode === "follow") {
+    showToast("CAMERA: FOLLOW", "Camera centered on balloon vehicle.", "info");
+  } else if (mode === "chase") {
+    showToast("CAMERA: CHASE", "Camera following behind flight vector.", "info");
+  } else if (mode === "ground") {
+    showToast("CAMERA: GROUND", "Ground perspective tracking vehicle.", "info");
+  }
+}
+
+export function setSimScaleMode(mode, multiplier) {
+  state.sim.scaleMode = mode;
+  if (multiplier !== undefined) {
+    state.sim.scaleMultiplier = Number(multiplier) || 5.0;
+  }
+
+  const btnPhys = $("btn-scale-physical");
+  const btnEnh = $("btn-scale-enhanced");
+  const selectMult = $("select-enhanced-mult");
+  const statusTag = $("globe-status-tag");
+
+  if (btnPhys) btnPhys.classList.toggle("active", mode === "physical");
+  if (btnEnh) btnEnh.classList.toggle("active", mode === "enhanced");
+  if (selectMult) {
+    selectMult.classList.toggle("hidden", mode !== "enhanced");
+    if (multiplier !== undefined) selectMult.value = String(state.sim.scaleMultiplier);
+  }
+
+  if (statusTag) {
+    if (mode === "physical") {
+      statusTag.textContent = "WGS84 ELLIPSOID · PHYSICAL (1:1)";
+    } else {
+      statusTag.textContent = `WGS84 · ${state.sim.scaleMultiplier}x ENHANCED (VISUAL AID)`;
+    }
+  }
+
+  state.altitudeMultiplier = mode === "enhanced" ? state.sim.scaleMultiplier : 1.0;
+
+  if (state.cesiumViewer && state.cesiumViewer.scene) {
+    state.cesiumViewer.scene.requestRender();
+  }
 }
 
 function updateCameraPresetButtons(activePreset) {
@@ -1268,6 +1643,58 @@ function fitAllMapBounds() {
 function initChart() {
   if (!window.Chart) return;
 
+  // 0. Register simulation synchronous crosshair plugin
+  if (Chart.registry && !Chart.registry.plugins.get("simCrosshair")) {
+    const simCrosshairPlugin = {
+      id: "simCrosshair",
+      afterDatasetsDraw(chart) {
+        if (!state.sim || !state.sim.active || state.history.length === 0) return;
+        const curTs = state.sim.currentTimeMs;
+        const startTs = state.sim.startTimeMs;
+        const endTs = state.sim.endTimeMs;
+        if (!curTs || !startTs || endTs <= startTs) return;
+
+        const chartArea = chart.chartArea;
+        if (!chartArea) return;
+
+        const frac = Math.max(0, Math.min(1, (curTs - startTs) / (endTs - startTs)));
+        const x = chartArea.left + frac * (chartArea.right - chartArea.left);
+
+        const ctx = chart.ctx;
+        ctx.save();
+        ctx.beginPath();
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = "rgba(116, 201, 207, 0.9)";
+        ctx.lineWidth = 1.5;
+        ctx.moveTo(x, chartArea.top);
+        ctx.lineTo(x, chartArea.bottom);
+        ctx.stroke();
+
+        ctx.fillStyle = "#74C9CF";
+        ctx.beginPath();
+        ctx.arc(x, chartArea.top + 3, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    };
+    Chart.register(simCrosshairPlugin);
+  }
+
+  function attachChartSimClick(canvas, chart) {
+    if (!canvas || !chart) return;
+    canvas.style.cursor = "crosshair";
+    canvas.addEventListener("click", (evt) => {
+      if (!state.sim || !state.sim.active || state.history.length === 0) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = evt.clientX - rect.left;
+      const chartArea = chart.chartArea;
+      if (!chartArea || x < chartArea.left || x > chartArea.right) return;
+      const fraction = (x - chartArea.left) / (chartArea.right - chartArea.left);
+      seekSimToFraction(fraction);
+      showToast("CHART SEEK", `Timeline jumped to ${(fraction * 100).toFixed(1)}% of mission profile`, "info");
+    });
+  }
+
   // 1. Overview Primary Profile Chart
   const overviewCanvas = $("mission-chart");
   if (overviewCanvas && !state.overviewChart) {
@@ -1322,6 +1749,7 @@ function initChart() {
         }
       }
     });
+    attachChartSimClick(overviewCanvas, state.overviewChart);
   }
 
   // 2. Flight Analysis Master Chart
@@ -1378,6 +1806,7 @@ function initChart() {
         }
       }
     });
+    attachChartSimClick(analysisCanvas, state.analysisMasterChart);
   }
 }
 
@@ -1862,6 +2291,11 @@ function setRtdbStatus(connected) {
 }
 
 function ingestTelemetryPacket(data, isLive = true) {
+  if ((state.sim.active || state.isDemoSimulation) && isLive) {
+    // When 3D simulation / demo is active, prevent remote live stream from disrupting the simulation
+    return;
+  }
+
   state.liveTelemetry = data;
   state.lastPacketTs = data.ts || Date.now();
 
@@ -1891,6 +2325,7 @@ function ingestTelemetryPacket(data, isLive = true) {
 }
 
 function ingestHistoryPacket(data) {
+  if (state.sim.active || state.isDemoSimulation) return;
   const exists = state.history.some((p) => p.packet_seq === data.packet_seq || (p.ts && p.ts === data.ts));
   if (!exists) {
     state.history.push({ ...data });
@@ -1993,61 +2428,372 @@ function startLinkHealthMonitor() {
   }, 1000);
 }
 
-function startReplayMode() {
-  if (state.history.length < 5) {
-    showToast("REPLAY UNAVAILABLE", "Insufficient flight trajectory history to replay.", "warn");
+export function initFlightSimulation() {
+  if (state.history.length === 0) return false;
+
+  const hist = state.history;
+  state.sim.startTimeMs = hist[0].ts;
+  state.sim.endTimeMs = hist[hist.length - 1].ts;
+  state.sim.durationMs = state.sim.endTimeMs - state.sim.startTimeMs;
+
+  // Find peak altitude (apogee & burst index)
+  let maxAlt = -Infinity;
+  let maxIdx = 0;
+  for (let i = 0; i < hist.length; i++) {
+    const a = hist[i].alt || 0;
+    if (a > maxAlt) {
+      maxAlt = a;
+      maxIdx = i;
+    }
+  }
+  state.sim.apogeeM = maxAlt;
+  state.sim.apogeeIndex = maxIdx;
+  state.sim.burstIndex = maxIdx;
+
+  // Find touchdown index (where altitude reaches surface after apogee)
+  let tdIdx = hist.length - 1;
+  for (let j = maxIdx; j < hist.length; j++) {
+    if ((hist[j].alt || 0) <= (state.settings.groundElevationM || 0) + 15) {
+      tdIdx = j;
+      break;
+    }
+  }
+  state.sim.touchdownIndex = tdIdx;
+
+  // Position timeline event markers
+  const burstMarker = $("sim-marker-burst");
+  if (burstMarker && state.sim.durationMs > 0) {
+    const burstFrac = (hist[maxIdx].ts - state.sim.startTimeMs) / state.sim.durationMs;
+    burstMarker.style.left = `${(burstFrac * 100).toFixed(1)}%`;
+    burstMarker.classList.remove("hidden");
+  }
+
+  const durationDisplay = $("sim-duration-display");
+  if (durationDisplay) {
+    const totalSec = Math.max(0, Math.floor(state.sim.durationMs / 1000));
+    const hh = String(Math.floor(totalSec / 3600)).padStart(2, "0");
+    const mm = String(Math.floor((totalSec % 3600) / 60)).padStart(2, "0");
+    const ss = String(totalSec % 60).padStart(2, "0");
+    durationDisplay.textContent = `DUR: ${hh}:${mm}:${ss}`;
+  }
+
+  const slider = $("sim-timeline-slider");
+  if (slider) {
+    slider.min = 0;
+    slider.max = 1000;
+    slider.value = 0;
+  }
+
+  return true;
+}
+
+export function startSimulation(autoPlay = true) {
+  if (state.history.length === 0) {
+    showToast("SIMULATION ERROR", "No trajectory data available to simulate.", "warn");
     return;
   }
 
-  state.replay.active = true;
-  state.replay.index = 0;
-  state.replay.paused = false;
+  initFlightSimulation();
+  state.sim.active = true;
+  state.sim.paused = !autoPlay;
+  state.sim.isPlaying = autoPlay;
+  state.sim.currentTimeMs = state.sim.startTimeMs;
+  state.sim.lastWallClockMs = performance.now();
+
+  const playBtnText = $("sim-play-text");
+  const playBtn = $("btn-sim-play-pause");
+  if (playBtnText) playBtnText.textContent = autoPlay ? "PAUSE" : "PLAY";
+  if (playBtn) playBtn.classList.toggle("is-playing", autoPlay);
 
   if ($("replay-indicator-badge")) $("replay-indicator-badge").classList.remove("hidden");
   if ($("btn-mode-live")) $("btn-mode-live").classList.remove("active");
   if ($("btn-mode-replay")) $("btn-mode-replay").classList.add("active");
 
-  const slider = $("replay-timeline-slider");
-  if (slider) {
-    slider.max = state.history.length - 1;
-    slider.value = 0;
+  // Automatically activate 3D Trajectory workspace
+  if (state.activeView !== "trajectory") {
+    switchWorkspaceView("trajectory");
   }
 
-  scheduleReplayStep();
-  recordEvent("REPLAY MODE STARTED", `Replaying ${state.history.length} samples at ${state.replay.speed}x speed.`, "info");
+  // Ensure Cesium 3D Globe is visible
+  if (state.mapMode !== "3d") {
+    setMapDisplayMode("3d");
+  }
+
+  syncSimulationFrame();
+
+  if (!state.sim.rafId) {
+    state.sim.rafId = requestAnimationFrame(simAnimationLoop);
+  }
+
+  recordEvent("SIMULATION RUNNING", `Authoritative clock active at ${state.sim.speed}x speed.`, "nominal");
 }
 
-function scheduleReplayStep() {
-  if (!state.replay.active || state.replay.paused) return;
+export function playSimulation() {
+  if (!state.sim.active) {
+    startSimulation(true);
+    return;
+  }
+  state.sim.paused = false;
+  state.sim.isPlaying = true;
+  state.sim.lastWallClockMs = performance.now();
 
-  if (state.replay.index >= state.history.length) {
-    recordEvent("REPLAY COMPLETE", "End of flight history reached.", "info");
-    state.replay.paused = true;
-    if ($("btn-replay-pause")) $("btn-replay-pause").textContent = "REPLAY";
+  const playBtnText = $("sim-play-text");
+  const playBtn = $("btn-sim-play-pause");
+  if (playBtnText) playBtnText.textContent = "PAUSE";
+  if (playBtn) playBtn.classList.add("is-playing");
+
+  if (!state.sim.rafId) {
+    state.sim.rafId = requestAnimationFrame(simAnimationLoop);
+  }
+}
+
+export function pauseSimulation() {
+  state.sim.paused = true;
+  state.sim.isPlaying = false;
+
+  const playBtnText = $("sim-play-text");
+  const playBtn = $("btn-sim-play-pause");
+  if (playBtnText) playBtnText.textContent = "PLAY";
+  if (playBtn) playBtn.classList.remove("is-playing");
+}
+
+export function toggleSimPlayPause() {
+  if (state.sim.paused) {
+    playSimulation();
+  } else {
+    pauseSimulation();
+  }
+}
+
+export function restartSimulation() {
+  if (!state.sim.active) {
+    startSimulation(true);
+    return;
+  }
+  state.sim.currentTimeMs = state.sim.startTimeMs;
+  state.sim.currentIndex = 0;
+  syncSimulationFrame();
+  playSimulation();
+}
+
+export function stepSimulation(secondsDelta) {
+  if (!state.sim.active) {
+    startSimulation(false);
+  }
+  pauseSimulation();
+  state.sim.currentTimeMs = Math.max(
+    state.sim.startTimeMs,
+    Math.min(state.sim.endTimeMs, state.sim.currentTimeMs + secondsDelta * 1000)
+  );
+  syncSimulationFrame();
+}
+
+export function seekSimToTime(targetMs) {
+  if (!state.sim.active) {
+    startSimulation(false);
+  }
+  state.sim.currentTimeMs = Math.max(
+    state.sim.startTimeMs,
+    Math.min(state.sim.endTimeMs, targetMs)
+  );
+  syncSimulationFrame();
+}
+
+export function seekSimToFraction(frac) {
+  if (!state.sim.active && state.history.length > 0) {
+    startSimulation(false);
+  }
+  const f = Math.max(0, Math.min(1, frac));
+  const t = state.sim.startTimeMs + f * (state.sim.endTimeMs - state.sim.startTimeMs);
+  seekSimToTime(t);
+}
+
+export function setSimSpeed(speed) {
+  const num = Number(speed);
+  if (!num || num <= 0) return;
+  state.sim.speed = num;
+  state.replay.speed = num;
+
+  const speedBtns = document.querySelectorAll(".btn-sim-speed");
+  speedBtns.forEach(btn => {
+    btn.classList.toggle("active", Number(btn.dataset.speed) === num);
+  });
+}
+
+export function syncSimulationFrame() {
+  if (state.history.length === 0) return;
+
+  const cur = getSimInterpolatedState();
+  if (!cur) return;
+
+  // 1. Time Displays (Authoritative Clock & MET)
+  const clockDisplay = $("sim-clock-display");
+  if (clockDisplay) {
+    clockDisplay.textContent = new Date(cur.ts).toLocaleTimeString("en-GB", {
+      timeZone: "UTC",
+      hour12: false
+    }) + " UTC";
+  }
+
+  const metDisplay = $("sim-met-display");
+  if (metDisplay) {
+    const elapsedSec = Math.max(0, Math.floor((cur.ts - state.sim.startTimeMs) / 1000));
+    const hh = String(Math.floor(elapsedSec / 3600)).padStart(2, "0");
+    const mm = String(Math.floor((elapsedSec % 3600) / 60)).padStart(2, "0");
+    const ss = String(elapsedSec % 60).padStart(2, "0");
+    metDisplay.textContent = `T+${hh}:${mm}:${ss}`;
+  }
+
+  // 2. Flight Phase Badges
+  const phaseBadge = $("sim-phase-badge");
+  if (phaseBadge) {
+    phaseBadge.textContent = cur.flightPhase;
+    phaseBadge.className = `flight-phase-badge phase-${cur.flightPhase.toLowerCase().replace(/[^a-z0-9]/g, "-")}`;
+  }
+  const topPhaseBadge = $("telemetry-phase-badge");
+  if (topPhaseBadge) topPhaseBadge.textContent = cur.flightPhase;
+
+  // 3. Timeline Slider Progress
+  const slider = $("sim-timeline-slider");
+  if (slider && state.sim.durationMs > 0) {
+    const frac = Math.max(0, Math.min(1, (cur.ts - state.sim.startTimeMs) / state.sim.durationMs));
+    slider.value = Math.floor(frac * 1000);
+  }
+
+  // 4. Controller Telemetry Quick Pills
+  const pillAlt = $("sim-pill-alt");
+  if (pillAlt) pillAlt.textContent = `${formatNum(cur.alt, 0)} m`;
+
+  const pillVs = $("sim-pill-vs");
+  if (pillVs) pillVs.textContent = `${cur.vs >= 0 ? "+" : ""}${formatNum(cur.vs, 1)} m/s`;
+
+  const pillDrift = $("sim-pill-drift");
+  if (pillDrift) pillDrift.textContent = `${formatNum(cur.speed, 1)} m/s ${formatNum(cur.heading, 0)}°`;
+
+  const pillWind = $("sim-pill-wind");
+  if (pillWind) {
+    const w = getCurrentLayerWind(cur.alt);
+    pillWind.textContent = `${formatNum(w.speed, 1)}m/s @ ${formatNum(w.dir, 0)}°`;
+  }
+
+  // 5. Avionics & Metrics Updates
+  state.liveTelemetry = cur;
+  updateAttitudeAndIMU(cur);
+
+  if ($("metric-alt")) $("metric-alt").textContent = formatNum(cur.alt, 1);
+  if ($("metric-vs")) $("metric-vs").textContent = `${cur.vs >= 0 ? "+" : ""}${formatNum(cur.vs, 1)}`;
+  if ($("metric-groundspeed")) $("metric-groundspeed").textContent = formatNum(cur.speed, 1);
+  if ($("metric-track")) $("metric-track").textContent = `${formatNum(cur.heading, 0)}°`;
+  if ($("metric-temp")) $("metric-temp").textContent = formatNum(cur.temp, 1);
+  if ($("metric-pressure")) $("metric-pressure").textContent = formatNum(cur.pressure, 1);
+  if ($("metric-sats")) $("metric-sats").textContent = cur.sats || 11;
+  if ($("metric-hdop")) $("metric-hdop").textContent = cur.hdop || 0.9;
+  if ($("metric-rssi")) $("metric-rssi").textContent = cur.rssi || -68;
+
+  // 6. Camera chase / ground modes updates in Cesium
+  if (state.cesiumViewer && window.Cesium) {
+    const mult = state.sim.scaleMode === "enhanced" ? state.sim.scaleMultiplier : 1.0;
+    if (state.sim.cameraMode === "chase") {
+      const headingRad = Cesium.Math.toRadians(cur.heading || 0);
+      const distBack = 160;
+      const altAbove = 45;
+      const dEast = -Math.sin(headingRad) * distBack;
+      const dNorth = -Math.cos(headingRad) * distBack;
+      const chasePos = destinationPoint(cur.lat, cur.lng, dEast, dNorth);
+      state.cesiumViewer.camera.setView({
+        destination: Cesium.Cartesian3.fromDegrees(chasePos.lng, chasePos.lat, (cur.alt * mult) + altAbove),
+        orientation: {
+          heading: headingRad,
+          pitch: Cesium.Math.toRadians(-12.0),
+          roll: 0.0
+        }
+      });
+    } else if (state.sim.cameraMode === "ground") {
+      const origin = (cur.flightPhase === "DESCENT" || cur.flightPhase === "TOUCHDOWN") && state.prediction && Number.isFinite(state.prediction.lat)
+        ? { lat: state.prediction.lat, lng: state.prediction.lng, alt: state.settings.groundElevationM || 0 }
+        : (state.launchPoint || { lat: 13.0827, lng: 80.2707, alt: 25 });
+      const heading = calculateBearing(origin.lat, origin.lng, cur.lat, cur.lng);
+      const groundDist = haversineDistance(origin.lat, origin.lng, cur.lat, cur.lng);
+      const pitch = Math.atan2((cur.alt * mult) - origin.alt, Math.max(10, groundDist));
+      state.cesiumViewer.camera.setView({
+        destination: Cesium.Cartesian3.fromDegrees(origin.lng, origin.lat, origin.alt + 8),
+        orientation: {
+          heading: Cesium.Math.toRadians(heading),
+          pitch: pitch,
+          roll: 0.0
+        }
+      });
+    }
+
+    if (state.cesiumViewer.scene) {
+      state.cesiumViewer.scene.requestRender();
+    }
+  }
+
+  // 7. 2D Map Sync
+  if (state.map && state.mapMode === "2d") {
+    if (state.mapLayers.balloonMarker) {
+      state.mapLayers.balloonMarker.setLatLng([cur.lat, cur.lng]);
+    }
+    if (state.settings.mapFollow) {
+      state.map.panTo([cur.lat, cur.lng], { animate: false });
+    }
+  }
+
+  // 8. Re-render charts for crosshair synchronization
+  if (state.overviewChart) state.overviewChart.render();
+  if (state.analysisMasterChart) state.analysisMasterChart.render();
+}
+
+export function simAnimationLoop(wallClockTs) {
+  if (!state.sim.active) {
+    state.sim.rafId = null;
     return;
   }
 
-  const packet = state.history[state.replay.index];
-  ingestTelemetryPacket(packet, false);
+  if (!state.sim.lastWallClockMs) state.sim.lastWallClockMs = wallClockTs;
+  const dtSec = Math.min(0.1, (wallClockTs - state.sim.lastWallClockMs) / 1000);
+  state.sim.lastWallClockMs = wallClockTs;
 
-  if ($("replay-timeline-slider")) $("replay-timeline-slider").value = state.replay.index;
-  if ($("replay-timeline-label")) $("replay-timeline-label").textContent = `${state.replay.index + 1} / ${state.history.length}`;
+  if (!state.sim.paused) {
+    const simStepMs = dtSec * 1000 * state.sim.speed;
+    state.sim.currentTimeMs += simStepMs;
 
-  state.replay.index++;
+    if (state.sim.currentTimeMs >= state.sim.endTimeMs) {
+      state.sim.currentTimeMs = state.sim.endTimeMs;
+      pauseSimulation();
+      recordEvent("TOUCHDOWN DETECTED", "Flight reached surface landing site.", "nominal");
+    }
+  }
 
-  const baseIntervalMs = 1000;
-  const interval = Math.max(50, Math.floor(baseIntervalMs / state.replay.speed));
-  state.replay.timer = setTimeout(scheduleReplayStep, interval);
+  syncSimulationFrame();
+
+  if (state.sim.active) {
+    state.sim.rafId = requestAnimationFrame(simAnimationLoop);
+  } else {
+    state.sim.rafId = null;
+  }
+}
+
+function startReplayMode() {
+  if (state.history.length < 5) {
+    showToast("REPLAY UNAVAILABLE", "Insufficient flight trajectory history to replay.", "warn");
+    return;
+  }
+  startSimulation(true);
+}
+
+function scheduleReplayStep() {
+  // Maintained for backward compatibility; RAF loop drives authoritative sim
+  if (!state.sim.paused) syncSimulationFrame();
 }
 
 function stopReplayMode() {
-  if (state.replay.timer) clearTimeout(state.replay.timer);
-  state.replay.active = false;
-
+  pauseSimulation();
+  state.sim.active = false;
   if ($("replay-indicator-badge")) $("replay-indicator-badge").classList.add("hidden");
   if ($("btn-mode-live")) $("btn-mode-live").classList.add("active");
   if ($("btn-mode-replay")) $("btn-mode-replay").classList.remove("active");
-
   recordEvent("LIVE MODE RESTORED", "Switched back to live telemetry stream.", "info");
 }
 
@@ -2076,15 +2822,19 @@ function launchDemoSimulation() {
   let simTime = Date.now() - 3600000; // 1 hr prior
 
   // Generate Ascent Profile (220 samples up to 30.2 km)
+  let prevAlt = curAlt;
   for (let i = 0; i < 220; i++) {
     const fraction = i / 220;
-    curAlt += 135 + Math.random() * 10;
+    const altIncrement = 135 + Math.random() * 10;
+    curAlt += altIncrement;
+    const dt = 12;
+    const computedVs = altIncrement / dt;
+
     // Jet stream drift: balloon drifts Eastward/North-Eastward
     const speed = 8 + fraction * 28 + (Math.sin(fraction * 10) * 4);
     const course = 85 + Math.sin(fraction * 6) * 20;
 
     const { u, v } = windComponents(speed, course);
-    const dt = 12;
     const nextPos = destinationPoint(curLat, curLng, u * dt, v * dt);
     curLat = nextPos.lat;
     curLng = nextPos.lng;
@@ -2100,6 +2850,7 @@ function launchDemoSimulation() {
       lat: curLat,
       lng: curLng,
       alt: curAlt,
+      computed_vs: Number(computedVs.toFixed(2)),
       pressure: Number(curPress.toFixed(1)),
       temp: Number(curTemp.toFixed(1)),
       gps_speed: Number(speed.toFixed(1)),
@@ -2120,20 +2871,25 @@ function launchDemoSimulation() {
       cutdown_state: "armed",
       ts: simTime
     });
+    prevAlt = curAlt;
   }
 
-  // Generate Descent Profile (80 samples down to ground)
+  // Generate Descent Profile down to ground level (0m) with aerodynamic deceleration
   const maxAltReached = curAlt;
-  for (let j = 0; j < 80; j++) {
-    const fraction = j / 80;
-    curAlt -= 340 + Math.random() * 30; // Parachute descent velocity
-    if (curAlt < 10) curAlt = 0;
+  let j = 0;
+  while (curAlt > (state.settings.groundElevationM || 0) && j < 250) {
+    const fraction = j / 120;
+    // Aerodynamic terminal descent velocity: ~38 m/s at 30km, decelerating to ~5 m/s near surface
+    const vTerm = 5.0 * Math.exp(curAlt / 14400);
+    const dt = 15;
+    const altDrop = Math.min(curAlt - (state.settings.groundElevationM || 0), vTerm * dt);
+    curAlt -= altDrop;
+    const computedVs = -(altDrop / dt);
 
-    const speed = 18 - fraction * 12 + Math.random() * 2;
-    const course = 110 + Math.sin(fraction * 5) * 15;
+    const speed = 18 - Math.min(1, fraction) * 12 + Math.random() * 2;
+    const course = 110 + Math.sin(j * 0.1) * 15;
 
     const { u, v } = windComponents(speed, course);
-    const dt = 15;
     const nextPos = destinationPoint(curLat, curLng, u * dt, v * dt);
     curLat = nextPos.lat;
     curLng = nextPos.lng;
@@ -2147,7 +2903,8 @@ function launchDemoSimulation() {
     state.history.push({
       lat: curLat,
       lng: curLng,
-      alt: Math.max(0, curAlt),
+      alt: Math.max(state.settings.groundElevationM || 0, curAlt),
+      computed_vs: Number(computedVs.toFixed(2)),
       pressure: Number(curPress.toFixed(1)),
       temp: Number(curTemp.toFixed(1)),
       gps_speed: Number(speed.toFixed(1)),
@@ -2162,25 +2919,31 @@ function launchDemoSimulation() {
       gz: Number((Math.random() * 2 - 1).toFixed(1)),
       roll: Number((Math.random() * 8 - 4).toFixed(1)),
       pitch: Number((Math.random() * 6 - 3).toFixed(1)),
-      rssi: -78 + Math.floor(fraction * 15),
+      rssi: -78 + Math.floor(Math.min(1, fraction) * 15),
       packet_seq: curSeq,
       packets_lost: 9,
       cutdown_state: "fired",
       ts: simTime
     });
 
-    if (curAlt <= 0) break;
+    j++;
+    if (curAlt <= (state.settings.groundElevationM || 0) + 0.1) break;
   }
 
-  const latestSimPacket = state.history[state.history.length - 20];
   state.launchPoint = { lat: baseLat, lng: baseLng, alt: 25.0 };
   state.apogeeM = maxAltReached;
   state.burstDetected = true;
 
-  ingestTelemetryPacket(latestSimPacket, false);
+  // Compute Monte Carlo landing predictions & dispersion ellipse
+  runLandingPrediction();
+  updateMapPrediction();
+  updateChart();
   fitAllMapBounds();
 
-  showToast("DEMO FLIGHT LOADED", "Full 30km ascent & parachute descent trajectory loaded.", "nominal");
+  // Launch interactive 3D simulation
+  startSimulation(true);
+
+  showToast("DEMO FLIGHT LOADED", "Full 30km ascent & parachute descent trajectory running in 3D simulator.", "nominal");
 }
 
 /* ============================================================================
@@ -2520,31 +3283,62 @@ function initUIListeners() {
     });
   }
 
-  // 5. Map Layer Visibility Toggles
+  // 5. Tactical Layer Visibility Toggles (3D Cesium & 2D Leaflet)
   if ($("layer-toggle-trail")) {
     $("layer-toggle-trail").addEventListener("change", (e) => {
-      if (e.target.checked) state.map.addLayer(state.mapLayers.trailLine);
-      else state.map.removeLayer(state.mapLayers.trailLine);
+      state.sim.showTrail = e.target.checked;
+      if (state.mapLayers.trailLine) {
+        if (e.target.checked) state.map.addLayer(state.mapLayers.trailLine);
+        else state.map.removeLayer(state.mapLayers.trailLine);
+      }
+      if (state.cesiumViewer && state.cesiumViewer.scene) state.cesiumViewer.scene.requestRender();
+    });
+  }
+  if ($("layer-toggle-future")) {
+    $("layer-toggle-future").addEventListener("change", (e) => {
+      state.sim.showFuturePath = e.target.checked;
+      if (state.cesiumViewer && state.cesiumViewer.scene) state.cesiumViewer.scene.requestRender();
+    });
+  }
+  if ($("layer-toggle-model")) {
+    $("layer-toggle-model").addEventListener("change", (e) => {
+      state.sim.showModel = e.target.checked;
+      if (state.cesiumViewer && state.cesiumViewer.scene) state.cesiumViewer.scene.requestRender();
+    });
+  }
+  if ($("layer-toggle-wind")) {
+    $("layer-toggle-wind").addEventListener("change", (e) => {
+      state.sim.showWindVector = e.target.checked;
+      if (state.cesiumViewer && state.cesiumViewer.scene) state.cesiumViewer.scene.requestRender();
     });
   }
   if ($("layer-toggle-mc")) {
     $("layer-toggle-mc").addEventListener("change", (e) => {
-      if (e.target.checked) state.map.addLayer(state.mapLayers.mcSamplesLayer);
-      else state.map.removeLayer(state.mapLayers.mcSamplesLayer);
+      state.sim.showMonteCarlo = e.target.checked;
+      if (state.mapLayers.mcSamplesLayer) {
+        if (e.target.checked) state.map.addLayer(state.mapLayers.mcSamplesLayer);
+        else state.map.removeLayer(state.mapLayers.mcSamplesLayer);
+      }
     });
   }
   if ($("layer-toggle-ellipse")) {
     $("layer-toggle-ellipse").addEventListener("change", (e) => {
-      if (e.target.checked) state.map.addLayer(state.mapLayers.ellipsePolygon);
-      else state.map.removeLayer(state.mapLayers.ellipsePolygon);
+      state.sim.showEllipse = e.target.checked;
+      if (state.mapLayers.ellipsePolygon) {
+        if (e.target.checked) state.map.addLayer(state.mapLayers.ellipsePolygon);
+        else state.map.removeLayer(state.mapLayers.ellipsePolygon);
+      }
+      if (state.cesiumViewer && state.cesiumViewer.scene) state.cesiumViewer.scene.requestRender();
     });
   }
   if ($("layer-toggle-nogo")) {
     $("layer-toggle-nogo").addEventListener("change", (e) => {
+      state.sim.showNoGo = e.target.checked;
       if (state.mapLayers.noGoCircle) {
         if (e.target.checked) state.map.addLayer(state.mapLayers.noGoCircle);
         else state.map.removeLayer(state.mapLayers.noGoCircle);
       }
+      if (state.cesiumViewer && state.cesiumViewer.scene) state.cesiumViewer.scene.requestRender();
     });
   }
 
@@ -2730,6 +3524,84 @@ function initUIListeners() {
       }
     });
   }
+
+  // 15. Authoritative 3D Flight Simulation Controller Dock Listeners
+  if ($("btn-sim-restart")) $("btn-sim-restart").addEventListener("click", restartSimulation);
+  if ($("btn-sim-step-back")) $("btn-sim-step-back").addEventListener("click", () => stepSimulation(-5));
+  if ($("btn-sim-play-pause")) $("btn-sim-play-pause").addEventListener("click", toggleSimPlayPause);
+  if ($("btn-sim-step-forward")) $("btn-sim-step-forward").addEventListener("click", () => stepSimulation(5));
+
+  if ($("sim-timeline-slider")) {
+    $("sim-timeline-slider").addEventListener("input", (e) => {
+      const frac = Number(e.target.value) / 1000;
+      seekSimToFraction(frac);
+    });
+  }
+
+  const simSpeedBtns = document.querySelectorAll(".sim-speeds-bar .btn-sim-speed");
+  simSpeedBtns.forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      setSimSpeed(e.target.dataset.speed);
+    });
+  });
+
+  const simCamBtns = document.querySelectorAll(".sim-cameras-bar .btn-sim-cam");
+  simCamBtns.forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      setSimCameraMode(e.target.dataset.cam);
+    });
+  });
+
+  if ($("btn-sim-reset-cam")) {
+    $("btn-sim-reset-cam").addEventListener("click", () => flyToMissionView(true));
+  }
+
+  if ($("btn-scale-physical")) {
+    $("btn-scale-physical").addEventListener("click", () => setSimScaleMode("physical", 1.0));
+  }
+  if ($("btn-scale-enhanced")) {
+    $("btn-scale-enhanced").addEventListener("click", () => setSimScaleMode("enhanced", state.sim.scaleMultiplier));
+  }
+  if ($("select-enhanced-mult")) {
+    $("select-enhanced-mult").addEventListener("change", (e) => {
+      setSimScaleMode("enhanced", Number(e.target.value));
+    });
+  }
+
+  // 16. Keyboard Hotkeys (Space, ArrowLeft, ArrowRight, Home, 1-4)
+  window.addEventListener("keydown", (e) => {
+    if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable)) {
+      return;
+    }
+    if (e.code === "Space") {
+      e.preventDefault();
+      toggleSimPlayPause();
+    } else if (e.code === "ArrowLeft") {
+      e.preventDefault();
+      stepSimulation(-5);
+    } else if (e.code === "ArrowRight") {
+      e.preventDefault();
+      stepSimulation(5);
+    } else if (e.code === "Home") {
+      e.preventDefault();
+      restartSimulation();
+    } else if (e.key === "1") {
+      setSimCameraMode("orbit");
+    } else if (e.key === "2") {
+      setSimCameraMode("follow");
+    } else if (e.key === "3") {
+      setSimCameraMode("chase");
+    } else if (e.key === "4") {
+      setSimCameraMode("ground");
+    }
+  });
+
+  // 17. Pause simulation when browser tab is inactive / backgrounded
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && state.sim.active && !state.sim.paused) {
+      pauseSimulation();
+    }
+  });
 }
 
 /* ============================================================================
@@ -2752,6 +3624,22 @@ function init() {
   startLinkHealthMonitor();
   initFirebase();
 }
+
+// Expose simulation API globally for automation and headless verification
+window.initFlightSimulation = initFlightSimulation;
+window.startSimulation = startSimulation;
+window.playSimulation = playSimulation;
+window.pauseSimulation = pauseSimulation;
+window.toggleSimPlayPause = toggleSimPlayPause;
+window.restartSimulation = restartSimulation;
+window.stepSimulation = stepSimulation;
+window.seekSimToTime = seekSimToTime;
+window.seekSimToFraction = seekSimToFraction;
+window.setSimSpeed = setSimSpeed;
+window.setSimCameraMode = setSimCameraMode;
+window.setSimScaleMode = setSimScaleMode;
+window.getSimInterpolatedState = getSimInterpolatedState;
+window.launchDemoSimulation = launchDemoSimulation;
 
 // Window load trigger
 if (document.readyState === "loading") {

@@ -600,11 +600,23 @@
             </div>
 
             <!-- Tactical Layer Controls -->
-            <div class="map-layer-controls-box">
-              <span class="panel-title" style="font-size: 10px; margin-bottom: 2px;">MAP OVERLAYS</span>
+            <div class="map-layer-controls-box" id="map-layer-controls-box">
+              <span class="panel-title" style="font-size: 10px; margin-bottom: 2px;">3D OVERLAYS & LAYERS</span>
               <label class="layer-toggle-row">
                 <input type="checkbox" id="layer-toggle-trail" checked>
-                <span>Flight Trajectory Polyline</span>
+                <span>Flight Trajectory (Ascent/Descent)</span>
+              </label>
+              <label class="layer-toggle-row">
+                <input type="checkbox" id="layer-toggle-future" checked>
+                <span>Forecast Descent Vector</span>
+              </label>
+              <label class="layer-toggle-row">
+                <input type="checkbox" id="layer-toggle-model" checked>
+                <span>3D Balloon & Parachute Model</span>
+              </label>
+              <label class="layer-toggle-row">
+                <input type="checkbox" id="layer-toggle-wind" checked>
+                <span>3D Wind Vector at Altitude</span>
               </label>
               <label class="layer-toggle-row">
                 <input type="checkbox" id="layer-toggle-mc" checked>
@@ -618,6 +630,113 @@
                 <input type="checkbox" id="layer-toggle-nogo" checked>
                 <span>No-Go Exclusion Perimeter</span>
               </label>
+            </div>
+
+            <!-- Authoritative 3D Flight Simulation Controller Dock -->
+            <div class="sim-controller-dock" id="sim-controller-dock">
+              <!-- Row 1: Interactive Scrub-able Timeline Slider & Mission Event Markers -->
+              <div class="sim-timeline-row">
+                <div class="sim-time-col">
+                  <span class="sim-clock-label" id="sim-clock-display">--:--:-- UTC</span>
+                  <span class="sim-met-label font-mono" id="sim-met-display">T+00:00:00</span>
+                </div>
+
+                <div class="sim-slider-container">
+                  <div class="sim-timeline-markers" id="sim-timeline-markers">
+                    <span class="sim-marker marker-launch" style="left: 0%;">▲ LAUNCH</span>
+                    <span class="sim-marker marker-burst hidden" id="sim-marker-burst" style="left: 72%;">💥 BURST/APOGEE</span>
+                    <span class="sim-marker marker-land" style="left: 100%;">🪂 TOUCHDOWN</span>
+                  </div>
+                  <input type="range" class="range-slider-input sim-timeline-slider" id="sim-timeline-slider" min="0" max="1000" value="0" aria-label="Simulation Timeline Scrub Bar">
+                </div>
+
+                <div class="sim-phase-col">
+                  <span class="flight-phase-badge" id="sim-phase-badge">PRE-LAUNCH</span>
+                  <span class="sim-duration-label font-mono" id="sim-duration-display">DUR: 00:00:00</span>
+                </div>
+              </div>
+
+              <!-- Row 2: Transport Buttons, Speed Selector, Camera Modes, Scale Modes & Telemetry Pills -->
+              <div class="sim-controls-row">
+                <!-- Transport Controls -->
+                <div class="sim-transport-group" role="group" aria-label="Playback Transport Controls">
+                  <button type="button" class="btn-sim-transport" id="btn-sim-restart" title="Restart simulation from launch (Home)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+                    <span>RESTART</span>
+                  </button>
+                  <button type="button" class="btn-sim-transport" id="btn-sim-step-back" title="Step backward 5s (Left Arrow)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg>
+                    <span>-5s</span>
+                  </button>
+                  <button type="button" class="btn-sim-play-pause" id="btn-sim-play-pause" title="Play / Pause simulation (Space)">
+                    <span id="sim-play-text">PLAY</span>
+                  </button>
+                  <button type="button" class="btn-sim-transport" id="btn-sim-step-forward" title="Step forward 5s (Right Arrow)">
+                    <span>+5s</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/></svg>
+                  </button>
+                </div>
+
+                <!-- Playback Speed Group -->
+                <div class="sim-speed-group" role="group" aria-label="Playback Speed">
+                  <span class="sim-group-label">SPEED:</span>
+                  <div class="button-group-segment sim-speeds-bar">
+                    <button type="button" class="btn-segment btn-sim-speed" data-speed="0.25">0.25x</button>
+                    <button type="button" class="btn-segment btn-sim-speed" data-speed="0.5">0.5x</button>
+                    <button type="button" class="btn-segment btn-sim-speed active" data-speed="1">1x</button>
+                    <button type="button" class="btn-segment btn-sim-speed" data-speed="2">2x</button>
+                    <button type="button" class="btn-segment btn-sim-speed" data-speed="5">5x</button>
+                    <button type="button" class="btn-segment btn-sim-speed" data-speed="10">10x</button>
+                  </div>
+                </div>
+
+                <!-- Camera Modes Segment (Orbit, Follow, Chase, Ground, Reset) -->
+                <div class="sim-camera-group" role="group" aria-label="3D Camera Modes">
+                  <span class="sim-group-label">CAM:</span>
+                  <div class="button-group-segment sim-cameras-bar">
+                    <button type="button" class="btn-segment btn-sim-cam active" data-cam="orbit" id="cam-mode-orbit" title="Free 3D rotation, pitch, and zoom (Key 1)">ORBIT</button>
+                    <button type="button" class="btn-segment btn-sim-cam" data-cam="follow" id="cam-mode-follow" title="Lock camera to moving balloon model (Key 2)">FOLLOW</button>
+                    <button type="button" class="btn-segment btn-sim-cam" data-cam="chase" id="cam-mode-chase" title="Place camera behind balloon along velocity vector (Key 3)">CHASE</button>
+                    <button type="button" class="btn-segment btn-sim-cam" data-cam="ground" id="cam-mode-ground" title="Ground perspective looking at balloon (Key 4)">GROUND</button>
+                  </div>
+                  <button type="button" class="btn-secondary btn-sim-reset-cam" id="btn-sim-reset-cam" title="Reset camera to framed mission perspective">RESET CAM</button>
+                </div>
+
+                <!-- Scale Mode (Physical 1:1 vs Enhanced Visualization) -->
+                <div class="sim-scale-group" role="group" aria-label="Visualization Proportions">
+                  <span class="sim-group-label">PROPORTIONS:</span>
+                  <div class="button-group-segment sim-scale-bar">
+                    <button type="button" class="btn-segment btn-sim-scale active" data-scale="physical" id="btn-scale-physical" title="True 1:1 geospatial altitude and physical dimensions">PHYSICAL (1:1)</button>
+                    <button type="button" class="btn-segment btn-sim-scale" data-scale="enhanced" id="btn-scale-enhanced" title="Enhanced visualization mode for visual inspection">ENHANCED</button>
+                  </div>
+                  <select id="select-enhanced-mult" class="sim-scale-select hidden" title="Select enhancement exaggeration multiplier">
+                    <option value="2">2x Exag</option>
+                    <option value="5" selected>5x Exag</option>
+                    <option value="10">10x Exag</option>
+                  </select>
+                </div>
+
+                <!-- Live Flight Telemetry Quick Pills -->
+                <div class="sim-telemetry-pills">
+                  <div class="sim-pill" title="Current Balloon Altitude">
+                    <span class="pill-k">ALT:</span>
+                    <span class="pill-v" id="sim-pill-alt">-- m</span>
+                  </div>
+                  <div class="sim-pill" title="Current Vertical Velocity">
+                    <span class="pill-k">V/S:</span>
+                    <span class="pill-v" id="sim-pill-vs">-- m/s</span>
+                  </div>
+                  <div class="sim-pill" title="Ground Drift Speed and Heading">
+                    <span class="pill-k">DRIFT:</span>
+                    <span class="pill-v" id="sim-pill-drift">-- m/s</span>
+                  </div>
+                  <div class="sim-pill" title="Atmospheric Wind at Current Altitude">
+                    <span class="pill-k">WIND:</span>
+                    <span class="pill-v" id="sim-pill-wind">--</span>
+                  </div>
+                </div>
+
+              </div>
             </div>
 
           </div>
